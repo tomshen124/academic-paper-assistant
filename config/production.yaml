@@ -1,0 +1,16 @@
+# 生产环境特定配置
+app:
+  debug: false
+
+# 服务器配置
+server:
+  reload: false
+  workers: 8
+
+# 日志配置
+logging:
+  level: "WARNING"
+
+# 缓存配置
+cache:
+  type: "redis"

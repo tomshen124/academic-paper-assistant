@@ -1,0 +1,70 @@
+// 主题色
+$primary: #409eff;
+$success: #67c23a;
+$warning: #e6a23c;
+$danger: #f56c6c;
+$info: #909399;
+
+// 文字颜色
+$textPrimary: #303133;
+$textRegular: #606266;
+$textSecondary: #909399;
+$textPlaceholder: #c0c4cc;
+
+// 边框颜色
+$borderColor: #dcdfe6;
+$borderColorLight: #e4e7ed;
+$borderColorLighter: #ebeef5;
+$borderColorExtraLight: #f2f6fc;
+
+// 背景色
+$bgColor: #f5f7fa;
+$bgColorLight: #fafafa;
+
+// 菜单颜色
+$menuBg: #1f2d3d;
+$menuText: #bfcbd9;
+$menuActiveText: #409eff;
+$menuHover: #263445;
+
+// 布局相关
+$headerHeight: 48px;
+$sidebarWidth: 220px;
+$contentPadding: 20px;
+
+// 响应式断点
+$screenXs: 480px;
+$screenSm: 768px;
+$screenMd: 992px;
+$screenLg: 1200px;
+$screenXl: 1600px;
+
+// 阴影
+$boxShadowBase: 0 2px 8px rgba(0, 0, 0, 0.15);
+$boxShadowLight: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+// 圆角
+$borderRadiusBase: 4px;
+$borderRadiusSmall: 2px;
+$borderRadiusLarge: 8px;
+
+// 字体大小
+$fontSizeBase: 14px;
+$fontSizeSmall: 12px;
+$fontSizeLarge: 16px;
+$fontSizeXLarge: 18px;
+$fontSizeXXLarge: 24px;
+
+// 导出变量供 JS 使用
+:export {
+  menuBg: $menuBg;
+  menuText: $menuText;
+  menuActiveText: $menuActiveText;
+  menuHover: $menuHover;
+  primary: $primary;
+  textRegular: $textRegular;
+  borderColor: $borderColor;
+  bgColor: $bgColor;
+  contentPadding: $contentPadding;
+  headerHeight: $headerHeight;
+} 

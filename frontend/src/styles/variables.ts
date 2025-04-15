@@ -1,0 +1,11 @@
+// 从 SCSS 变量导出的 JavaScript/TypeScript 变量
+export const menuBg = '#304156'
+export const menuText = '#e0e0e0'
+export const menuActiveText = '#409eff'
+export const menuHover = '#3c4c63'
+export const primary = '#409eff'
+export const textRegular = '#606266'
+export const borderColor = '#dcdfe6'
+export const bgColor = '#f5f7fa'
+export const contentPadding = '20px'
+export const headerHeight = '48px' 

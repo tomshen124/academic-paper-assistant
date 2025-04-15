@@ -1,0 +1,25 @@
+# 生产环境特定配置
+project:
+  debug: false
+  environment: "production"
+
+server:
+  workers: 8
+  reload: false
+
+database:
+  pool_size: 50
+  max_overflow: 20
+
+cors:
+  allow_origins: ["https://your-domain.com"]
+
+cache:
+  enabled: true
+  type: "redis"
+
+logging:
+  level: "WARNING"
+  
+performance:
+  max_workers: 8 

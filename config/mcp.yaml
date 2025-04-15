@@ -1,0 +1,55 @@
+# MCP (Model Context Protocol) 配置
+
+# 基本配置
+mcp:
+  # 是否启用MCP功能
+  enabled: false
+
+  # 连接类型: stdio 或 sse
+  connection_type: "stdio"
+
+  # MCP服务器路径 (用于stdio连接)
+  server_path: "/usr/local/bin/mcp-server"
+
+  # MCP服务器SSE URL (用于sse连接)
+  sse_url: "http://localhost:8080/api/v1"
+
+  # MCP服务器API密钥
+  api_key: ""
+
+  # 重试配置
+  retry:
+    max_attempts: 3
+    initial_delay: 1.0
+    max_delay: 10.0
+
+  # 超时配置（秒）
+  timeouts:
+    connect: 5.0
+    read: 30.0
+    write: 10.0
+
+  # 日志配置
+  logging:
+    # 是否记录详细日志
+    verbose: false
+    # 是否记录请求和响应内容
+    log_content: false
+
+
+
+  # 工具配置
+  tools:
+    # 是否自动注册工具
+    auto_register: true
+    # 工具注册超时（秒）
+    register_timeout: 10.0
+
+  # 上下文配置
+  contexts:
+    # 默认上下文超时（秒）
+    default_timeout: 300.0
+    # 是否保存上下文历史
+    save_history: true
+    # 历史记录保存路径
+    history_path: "logs/mcp_history"

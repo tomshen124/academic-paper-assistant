@@ -1,0 +1,90 @@
+# 项目基础配置
+app:
+  name: "Academic Paper Assistant"
+  version: "1.0.0"
+  environment: "development"
+  debug: true
+  api_prefix: "/api/v1"
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: true
+
+# 数据库配置（敏感信息从.env读取）
+database:
+  pool_size: 20
+  max_overflow: 10
+  pool_timeout: 30
+  pool_recycle: 1800
+
+# CORS配置
+cors:
+  allow_origins: ["*"]
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+  allow_credentials: true
+
+# 缓存配置
+cache:
+  enabled: true
+  type: "memory"  # 可选：redis, memory
+  prefix: "apa:"
+  default_ttl: 3600
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
+
+# 性能优化配置
+performance:
+  batch_size: 1000  # 批量操作大小
+  max_workers: 4  # 最大工作线程数
+  query_timeout: 30  # 查询超时时间（秒）
+
+# LLM配置
+llm:
+  default_model: "gpt-3.5-turbo"
+  max_tokens: 4096
+  temperature: 0.6
+  top_p: 0.9
+  frequency_penalty: 0.0
+  presence_penalty: 0.0
+  cache_enable: true
+  cache_folder: ".cache/litellm"
+
+# 学术搜索配置
+academic_search:
+  # 启用的搜索源
+  enabled_sources:
+    semantic_scholar: true
+    arxiv: true
+    google_scholar: false  # 默认禁用，容易被IP封禁
+
+  # 默认搜索参数
+  default_params:
+    limit: 10
+    sort_by: "relevance"  # relevance, citations, date
+    years: "all"  # all, last_1, last_5, last_10
+
+  # Semantic Scholar配置
+  semantic_scholar:
+    api_url: "https://api.semanticscholar.org/graph/v1"
+    fields: "title,authors,year,abstract,url,venue,citationCount,references"
+    use_api_key: true
+
+  # arXiv配置
+  arxiv:
+    sort_by: "relevance"  # relevance, lastUpdatedDate, submittedDate
+    categories: []  # 为空表示所有类别
+
+  # Google Scholar配置
+  google_scholar:
+    proxy: ""  # 可选代理服务器，避免IP被封
+    timeout: 30  # 超时时间（秒）

@@ -1,0 +1,11 @@
+# 开发环境特定配置
+app:
+  debug: true
+
+# 服务器配置
+server:
+  reload: true
+
+# 日志配置
+logging:
+  level: "DEBUG"
