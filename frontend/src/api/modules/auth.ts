@@ -1,4 +1,4 @@
-import request from '../request';
+import { request } from '../../utils/request';
 import type { AxiosResponse } from 'axios';
 
 /**
@@ -35,7 +35,7 @@ export interface UserInfo {
  * @param data 登录参数
  * @returns 登录响应
  */
-export function login(data: LoginRequest): Promise<AxiosResponse<LoginResponse>> {
+export function login(data: LoginRequest): Promise<LoginResponse> {
   return request({
     url: '/auth/login/json',
     method: 'post',
@@ -47,7 +47,7 @@ export function login(data: LoginRequest): Promise<AxiosResponse<LoginResponse>>
  * 获取当前用户信息
  * @returns 用户信息
  */
-export function getUserInfo(): Promise<AxiosResponse<UserInfo>> {
+export function getUserInfo(): Promise<UserInfo> {
   return request({
     url: '/users/me',
     method: 'get'
@@ -65,9 +65,9 @@ export interface RegisterRequest {
   password: string;
 }
 
-export function register(data: RegisterRequest): Promise<AxiosResponse<UserInfo>> {
+export function register(data: RegisterRequest): Promise<UserInfo> {
   return request({
-    url: '/users',
+    url: '/users/register',
     method: 'post',
     data
   });

@@ -1,13 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from jose import jwt, JWTError
 from app.api.v1 import api_router
 from app.services.mcp_adapter import mcp_adapter
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.db.session import SessionLocal
 from app.db.init_db import init_db
+from app.core.context import set_current_user_id, reset_current_user_id
+from app.core.security import SECRET_KEY, ALGORITHM
 import asyncio
 
 # 初始化日志
@@ -16,7 +20,16 @@ setup_logging()
 # 初始化数据库
 db = SessionLocal()
 try:
-    init_db(db)
+    # 创建数据库表
+    from app.db.base import Base
+    from app.db.session import engine
+    Base.metadata.create_all(bind=engine)
+
+    # 如果配置了初始化超级用户，则创建超级用户
+    if settings.config.get("database", {}).get("init_superuser", False):
+        from app.db.init_db import create_first_superuser
+        create_first_superuser(db)
+        print("Initialized superuser")
 except Exception as e:
     print(f"Error initializing database: {e}")
 finally:
@@ -30,6 +43,38 @@ app = FastAPI(
     redoc_url=None  # 禁用默认的 redoc
 )
 
+# 用户ID中间件
+class UserIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # 重置用户ID
+        reset_current_user_id()
+
+        # 尝试从请求头中提取用户ID
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '')
+            try:
+                # 解析JWT令牌
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                username = payload.get("sub")
+                if username:
+                    # 从数据库中获取用户ID
+                    db = SessionLocal()
+                    try:
+                        from app.models.user import User
+                        user = db.query(User).filter(User.username == username).first()
+                        if user:
+                            # 设置当前用户ID
+                            set_current_user_id(user.id)
+                    finally:
+                        db.close()
+            except JWTError:
+                pass
+
+        # 继续处理请求
+        response = await call_next(request)
+        return response
+
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +83,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加用户ID中间件
+app.add_middleware(UserIDMiddleware)
 
 # 注册API路由
 app.include_router(api_router, prefix="/api/v1")

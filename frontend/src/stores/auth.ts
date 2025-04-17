@@ -27,7 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true;
       const response = await getUserInfo();
-      userInfo.value = response.data;
+      userInfo.value = response;
       localStorage.setItem('userInfo', JSON.stringify(userInfo.value));
     } catch (error) {
       console.error('获取用户信息失败:', error);
@@ -42,19 +42,30 @@ export const useAuthStore = defineStore('auth', () => {
   const loginAction = async (loginData: LoginRequest) => {
     try {
       loading.value = true;
+      console.log('尝试登录，用户名:', loginData.username);
+
+      // 确保密码长度符合要求
+      if (loginData.password.length < 6) {
+        ElMessage.warning('密码长度不能少于6个字符');
+        return false;
+      }
+
       const response = await login(loginData);
-      token.value = response.data.access_token;
+      console.log('登录响应:', response);
+
+      token.value = response.access_token;
       localStorage.setItem('token', token.value);
-      
+
       // 获取用户信息
       await fetchUserInfo();
-      
+
       ElMessage.success('登录成功');
       router.push('/');
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('登录失败:', error);
-      ElMessage.error('登录失败，请检查用户名和密码');
+      console.error('错误详情:', error.response?.data);
+      ElMessage.error(error.detail || '登录失败，请检查用户名和密码');
       return false;
     } finally {
       loading.value = false;

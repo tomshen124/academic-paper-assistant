@@ -34,12 +34,13 @@ email-validator==2.1.0.post1
 pyyaml==6.0.1
 
 # LLM 和 AI 工具
-litellm>=0.1.345
 loguru>=0.7.0
 tenacity>=8.2.2
+httpx>=0.26.0
+tiktoken>=0.5.1
+litellm>=0.1.345
 langchain>=0.0.267
 langchain-openai>=0.0.2
-tiktoken>=0.5.1
 
 # MCP集成 (可选依赖)
 # websockets>=11.0.3  # 如需使用WebSocket连接方式，请取消注释

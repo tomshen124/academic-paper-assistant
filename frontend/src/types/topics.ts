@@ -8,6 +8,8 @@ export interface TopicRequest {
   academic_field: string;
   /** 学术级别 */
   academic_level?: string;
+  /** 推荐主题数量 */
+  topic_count?: number;
 }
 
 /**

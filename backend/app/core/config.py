@@ -25,14 +25,28 @@ class Settings(BaseSettings):
     # 可选配置（从.env加载，有默认值）
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, description="访问令牌过期时间（分钟）")
 
-    # LLM 配置
+    # LLM 配置 - OpenAI
     OPENAI_API_KEY: Optional[str] = Field(None, description="OpenAI API密钥")
     OPENAI_API_BASE: Optional[str] = Field(None, description="OpenAI API基础URL")
+
+    # LLM 配置 - Anthropic
     ANTHROPIC_API_KEY: Optional[str] = Field(None, description="Anthropic API密钥")
+
+    # LLM 配置 - DeepSeek
     DEEPSEEK_API_KEY: Optional[str] = Field(None, description="DeepSeek API密钥")
     DEEPSEEK_API_URL: str = "https://api.deepseek.com/v1/chat/completions"
     DEEPSEEK_MODEL: str = "deepseek-chat"
-    DEFAULT_MODEL: str = "gpt-3.5-turbo"
+
+    # LLM 配置 - SiliconFlow
+    SILICONFLOW_API_KEY: Optional[str] = Field(None, description="SiliconFlow API密钥")
+    SILICONFLOW_API_URL: str = "https://api.siliconflow.com/v1/chat/completions"
+
+    # LLM 配置 - 阿里云
+    ALIYUN_API_KEY: Optional[str] = Field(None, description="阿里云 API密钥")
+    ALIYUN_API_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    # LLM 配置 - 默认设置
+    DEFAULT_MODEL: str = "deepseek-chat"
 
     # LiteLLM配置
     LITELLM_CACHE_ENABLE: bool = True
@@ -40,7 +54,7 @@ class Settings(BaseSettings):
 
     # LLM 参数配置
     LLM_MAX_TOKENS: int = 2000
-    LLM_TEMPERATURE: float = 0.3
+    LLM_TEMPERATURE: float = 0.7
     LLM_TOP_P: float = 0.9
     LLM_FREQUENCY_PENALTY: float = 0.0
     LLM_PRESENCE_PENALTY: float = 0.0

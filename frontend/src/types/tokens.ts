@@ -109,3 +109,53 @@ export interface TokenUsageResetResponse {
   /** 之前的摘要 */
   previous_summary: TokenUsageSummary;
 }
+
+/**
+ * 用户Token使用记录
+ */
+export interface UserTokenUsageRecord {
+  /** 记录ID */
+  id: number;
+  /** 模型 */
+  model: string;
+  /** 服务 */
+  service: string;
+  /** 任务 */
+  task: string;
+  /** 输入tokens */
+  prompt_tokens: number;
+  /** 输出 tokens */
+  completion_tokens: number;
+  /** 总 tokens */
+  total_tokens: number;
+  /** 估算成本 */
+  estimated_cost: number;
+  /** 时间戳 */
+  timestamp: string;
+}
+
+/**
+ * 用户Token使用摘要
+ */
+export interface UserTokenUsageSummary {
+  /** 总使用量 */
+  total_usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    estimated_cost: number;
+    requests: number;
+  };
+  /** 按模型统计 */
+  by_model: Record<string, {
+    total_tokens: number;
+    estimated_cost: number;
+    requests: number;
+  }>;
+  /** 按服务统计 */
+  by_service: Record<string, {
+    total_tokens: number;
+    estimated_cost: number;
+    requests: number;
+  }>;
+}

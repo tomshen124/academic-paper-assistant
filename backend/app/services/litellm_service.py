@@ -14,9 +14,9 @@ from app.core.context import get_current_user_id
 from app.services.litellm_config import MODEL_MAPPINGS
 
 # 创建LLM日志器
-logger = get_llm_logger("llm_service")
+logger = get_llm_logger("litellm_service")
 
-class LLMService:
+class LiteLLMService:
     """LLM服务，使用LiteLLM支持多种模型"""
 
     def __init__(self):
@@ -39,7 +39,7 @@ class LLMService:
         if "qwen-turbo" in self.available_models:
             self.fallback_models.append({"model": "qwen-turbo"})
 
-        logger.info(f"LLM服务初始化完成，可用模型: {self.available_models}")
+        logger.info(f"LiteLLM服务初始化完成，可用模型: {self.available_models}")
         logger.info(f"回退模型: {[m['model'] for m in self.fallback_models]}")
 
     @retry(
@@ -104,7 +104,7 @@ class LLMService:
                 model=model,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                service="llm_service",
+                service="litellm_service",
                 task=kwargs.get("task", "acompletion"),
                 user_id=get_current_user_id()
             )
@@ -177,7 +177,7 @@ class LLMService:
                 model=model,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                service="llm_service",
+                service="litellm_service",
                 task=kwargs.get("task", "completion"),
                 user_id=get_current_user_id()
             )
@@ -243,5 +243,5 @@ class LLMService:
             # 所有模型都失败
             raise Exception("所有LLM模型调用都失败")
 
-# 创建全局LLM服务实例
-llm_service = LLMService()
+# 创建全局LiteLLM服务实例
+litellm_service = LiteLLMService()

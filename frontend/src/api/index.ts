@@ -37,7 +37,7 @@ request.interceptors.response.use(
   },
   (error: AxiosError<ErrorResponse>) => {
     console.error('Response error:', error)
-    
+
     // 处理错误响应
     if (error.response) {
       const { status, data } = error.response
@@ -65,9 +65,9 @@ request.interceptors.response.use(
     } else {
       ElMessage.error('请求配置错误')
     }
-    
+
     return Promise.reject(error)
   }
 )
 
-export default request 
+export { request }

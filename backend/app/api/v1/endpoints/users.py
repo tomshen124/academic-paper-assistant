@@ -40,7 +40,7 @@ def create_user(
             status_code=400,
             detail="该邮箱已被注册",
         )
-    
+
     # 检查用户名是否已存在
     user = db.query(User).filter(User.username == user_in.username).first()
     if user:
@@ -48,7 +48,7 @@ def create_user(
             status_code=400,
             detail="该用户名已被使用",
         )
-    
+
     # 创建新用户
     user = User(
         email=user_in.email,
@@ -61,6 +61,45 @@ def create_user(
     db.commit()
     db.refresh(user)
     logger.info(f"创建新用户: {user.username}")
+    return user
+
+@router.post("/register", response_model=UserSchema)
+def register_user(
+    *,
+    db: Session = Depends(deps.get_db),
+    user_in: UserCreate,
+) -> Any:
+    """
+    公开注册新用户
+    """
+    # 检查邮箱是否已存在
+    user = db.query(User).filter(User.email == user_in.email).first()
+    if user:
+        raise HTTPException(
+            status_code=400,
+            detail="该邮箱已被注册",
+        )
+
+    # 检查用户名是否已存在
+    user = db.query(User).filter(User.username == user_in.username).first()
+    if user:
+        raise HTTPException(
+            status_code=400,
+            detail="该用户名已被使用",
+        )
+
+    # 创建新用户（禁止创建超级用户）
+    user = User(
+        email=user_in.email,
+        username=user_in.username,
+        hashed_password=get_password_hash(user_in.password),
+        is_superuser=False,  # 强制设置为非超级用户
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info(f"注册新用户: {user.username}")
     return user
 
 @router.get("/me", response_model=UserSchema)
@@ -90,7 +129,7 @@ def update_user_me(
                 status_code=400,
                 detail="该邮箱已被注册",
             )
-    
+
     # 如果要更新用户名，检查是否已存在
     if user_in.username and user_in.username != current_user.username:
         user = db.query(User).filter(User.username == user_in.username).first()
@@ -99,16 +138,16 @@ def update_user_me(
                 status_code=400,
                 detail="该用户名已被使用",
             )
-    
+
     # 更新用户信息
     user_data = user_in.dict(exclude_unset=True)
     if user_in.password:
         user_data["hashed_password"] = get_password_hash(user_in.password)
         del user_data["password"]
-    
+
     for key, value in user_data.items():
         setattr(current_user, key, value)
-    
+
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
@@ -130,14 +169,14 @@ def read_user_by_id(
             status_code=404,
             detail="用户不存在",
         )
-    
+
     # 只有超级用户可以查看其他用户
     if user.id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
             status_code=400,
             detail="权限不足",
         )
-    
+
     return user
 
 @router.put("/{user_id}", response_model=UserSchema)
@@ -157,7 +196,7 @@ def update_user(
             status_code=404,
             detail="用户不存在",
         )
-    
+
     # 如果要更新邮箱，检查是否已存在
     if user_in.email and user_in.email != user.email:
         user_with_email = db.query(User).filter(User.email == user_in.email).first()
@@ -166,7 +205,7 @@ def update_user(
                 status_code=400,
                 detail="该邮箱已被注册",
             )
-    
+
     # 如果要更新用户名，检查是否已存在
     if user_in.username and user_in.username != user.username:
         user_with_username = db.query(User).filter(User.username == user_in.username).first()
@@ -175,16 +214,16 @@ def update_user(
                 status_code=400,
                 detail="该用户名已被使用",
             )
-    
+
     # 更新用户信息
     user_data = user_in.dict(exclude_unset=True)
     if user_in.password:
         user_data["hashed_password"] = get_password_hash(user_in.password)
         del user_data["password"]
-    
+
     for key, value in user_data.items():
         setattr(user, key, value)
-    
+
     db.add(user)
     db.commit()
     db.refresh(user)

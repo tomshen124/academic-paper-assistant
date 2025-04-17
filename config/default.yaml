@@ -27,6 +27,7 @@ database:
   max_overflow: 10           # 最大溢出连接数
   pool_timeout: 30           # 连接池超时时间（秒）
   pool_recycle: 1800         # 连接回收时间（秒）
+  init_superuser: false      # 是否在启动时初始化超级用户
 
 # ==========================================
 # CORS配置
@@ -69,7 +70,7 @@ performance:
 # ==========================================
 llm:
   # 默认模型配置
-  default_model: "gpt-3.5-turbo"  # 默认使用的模型，可在.env中覆盖
+  default_model: "deepseek-reasoner"  # 默认使用的模型，可在.env中覆盖
   max_tokens: 4096           # 最大token数
   temperature: 0.6           # 温度参数，控制生成文本的随机性
   top_p: 0.9                 # Top-p采样参数
@@ -84,19 +85,19 @@ llm:
   agent_configs:
     # 写作智能体
     writing:
-      model: "gpt-3.5-turbo"  # 使用的模型
+      model: "deepseek-chat"  # 使用的模型
       temperature: 0.7        # 温度参数
       system_prompt: "你是一位专业的学术写作专家，擅长撰写清晰、结构化的学术论文。"
 
     # 审核智能体
     review:
-      model: "gpt-3.5-turbo"  # 使用的模型
+      model: "deepseek-chat"  # 使用的模型
       temperature: 0.3        # 温度参数
       system_prompt: "你是一位经验丰富的论文审稿人，擅长发现论文中的问题并提供建设性意见。"
 
     # 文献研究智能体
     literature:
-      model: "gpt-3.5-turbo"  # 使用的模型
+      model: "deepseek-chat"  # 使用的模型
       temperature: 0.5        # 温度参数
       system_prompt: "你是一位文献研究专家，擅长分析和总结学术文献。"
 

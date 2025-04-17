@@ -16,9 +16,9 @@ def init_db(db: Session) -> None:
     """初始化数据库"""
     # 创建所有表
     Base.metadata.create_all(bind=engine)
-    
-    # 创建初始超级用户
-    create_first_superuser(db)
+
+    # 注意：超级用户初始化现在由main.py控制
+    # 可以直接调用create_first_superuser(db)来创建超级用户
 
 def create_first_superuser(db: Session) -> None:
     """创建初始超级用户"""

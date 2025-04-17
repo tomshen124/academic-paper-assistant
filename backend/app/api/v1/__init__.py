@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .endpoints import topics, outlines, papers, citations, search, agents, tokens, mcp, auth, users
+from .endpoints import topics, outlines, papers, citations, search, agents, tokens, mcp, auth, users, interests
 
 api_router = APIRouter()
 
@@ -18,7 +18,8 @@ async def api_root():
             "tokens": "/tokens",
             "mcp": "/mcp",
             "auth": "/auth",
-            "users": "/users"
+            "users": "/users",
+            "interests": "/interests"
         }
     }
 
@@ -51,6 +52,9 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 # 用户相关路由
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+
+# 兴趣分析相关路由
+api_router.include_router(interests.router, prefix="/interests", tags=["interests"])
 
 # 导出路由器供主应用使用
 __all__ = ["api_router"]

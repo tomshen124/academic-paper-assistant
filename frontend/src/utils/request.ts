@@ -27,13 +27,34 @@ service.interceptors.request.use(
 // 响应拦截器
 service.interceptors.response.use(
   (response: AxiosResponse) => {
+    // 打印成功响应的详细信息（仅在开发环境）
+    if (import.meta.env.DEV) {
+      console.log('请求成功:', {
+        url: response.config.url,
+        method: response.config.method,
+        status: response.status,
+        data: response.data
+      })
+    }
     return response
   },
   (error) => {
+    // 打印错误详细信息
     console.error('响应错误:', error)
+    console.error('错误详情:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      data: error.response?.data
+    })
 
     // 处理401认证错误
     if (error.response?.status === 401) {
+      // 如果是登录页面，不跳转
+      if (window.location.pathname.includes('/login')) {
+        return Promise.reject(error)
+      }
+
       ElMessage.error('登录已过期，请重新登录')
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
@@ -43,14 +64,19 @@ service.interceptors.response.use(
     }
 
     // 处理其他错误
-    ElMessage.error(error.response?.data?.detail || '请求失败')
+    if (error.response?.data?.detail) {
+      ElMessage.error(error.response.data.detail)
+    } else {
+      ElMessage.error('请求失败，请稍后再试')
+    }
+
     return Promise.reject(error)
   }
 )
 
 // 封装请求方法
-const request = <T = any>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> => {
-  return service(config) as unknown as Promise<AxiosResponse<T>>;
+const request = <T = any>(config: AxiosRequestConfig): Promise<T> => {
+  return service(config).then(res => res.data);
 };
 
-export default request
+export { request }

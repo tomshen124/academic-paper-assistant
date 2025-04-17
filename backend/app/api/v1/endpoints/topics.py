@@ -30,18 +30,44 @@ async def recommend_topics(
         topics = await topic_service.recommend_topics(
             user_interests=request.user_interests,
             academic_field=request.academic_field,
-            academic_level=request.academic_level
+            academic_level=request.academic_level,
+            topic_count=request.topic_count,
+            interest_analysis=request.interest_analysis
         )
 
         # 将推荐的主题保存到数据库
         for topic_data in topics:
-            db_topic = Topic(
-                user_id=current_user.id,
-                title=topic_data.title,
-                academic_field=request.academic_field,
-                academic_level=request.academic_level,
-                keywords=topic_data.keywords
-            )
+            # 检查topic_data是否为字典类型
+            if isinstance(topic_data, dict):
+                db_topic = Topic(
+                    user_id=current_user.id,
+                    title=topic_data.get('title', ''),
+                    research_question=topic_data.get('research_question', ''),
+                    feasibility=topic_data.get('feasibility', ''),
+                    innovation=topic_data.get('innovation', ''),
+                    methodology=topic_data.get('methodology', ''),
+                    resources=topic_data.get('resources', ''),
+                    expected_outcomes=topic_data.get('expected_outcomes', ''),
+                    academic_field=request.academic_field,
+                    academic_level=request.academic_level,
+                    keywords=topic_data.get('keywords', [])
+                )
+            else:
+                # 如果不是字典，尝试将其作为对象处理
+                try:
+                    db_topic = Topic(
+                        user_id=current_user.id,
+                        title=topic_data.title,
+                        academic_field=request.academic_field,
+                        academic_level=request.academic_level,
+                        keywords=topic_data.keywords
+                    )
+                except Exception as e:
+                    # 如果出错，记录错误并跳过这个主题
+                    import logging
+                    logging.error(f"处理主题数据失败: {str(e)}, 数据: {topic_data}")
+                    continue
+
             db.add(db_topic)
 
         db.commit()

@@ -30,6 +30,21 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="推荐主题数量">
+          <el-slider
+            v-model="formData.topic_count"
+            :min="1"
+            :max="10"
+            :step="1"
+            :marks="topicCountMarks"
+            show-stops
+          />
+          <div class="slider-description">
+            <span>少量主题，更精准</span>
+            <span>多量主题，更多选择</span>
+          </div>
+        </el-form-item>
+
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="submitForm">获取推荐主题</el-button>
           <el-button @click="resetForm">重置</el-button>
@@ -37,62 +52,94 @@
       </el-form>
     </el-card>
 
+    <!-- 加载中状态 -->
+    <el-card v-if="loading" class="loading-card">
+      <div class="loading-container">
+        <el-skeleton :rows="5" animated />
+        <div class="loading-text">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>正在生成主题，这可能需要一分钟左右的时间...</span>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 主题结果 -->
     <el-card v-if="topics.length > 0" class="topic-results-card">
       <template #header>
         <div class="card-header">
-          <h2>推荐主题</h2>
+          <h2>推荐主题 ({{ topics.length }})</h2>
           <p>基于您的兴趣，我们推荐以下研究主题</p>
         </div>
       </template>
 
       <div class="topics-list">
+        <!-- 显示主题总数 -->
+        <div class="topics-summary">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+          >
+            <template #title>
+              共找到 <strong>{{ topics.length }}</strong> 个推荐主题，点击展开查看详情
+            </template>
+          </el-alert>
+        </div>
+
         <el-collapse v-model="activeTopics">
+          <!-- 调试信息 -->
+          <div class="debug-info" v-if="isDev">
+            <p>主题数量: {{ topics.length }}</p>
+            <pre>{{ JSON.stringify(topics, null, 2) }}</pre>
+          </div>
+
           <el-collapse-item v-for="(topic, index) in topics" :key="index" :name="index">
             <template #title>
               <div class="topic-title">
                 <span class="topic-number">{{ index + 1 }}</span>
-                <h3>{{ topic.title }}</h3>
+                <h3>{{ topic.title || '未命名主题' }}</h3>
               </div>
             </template>
 
             <div class="topic-details">
               <div class="topic-detail-item">
                 <h4>研究问题</h4>
-                <p>{{ topic.research_question }}</p>
+                <p>{{ topic.research_question || '无研究问题' }}</p>
               </div>
 
               <div class="topic-detail-item">
                 <h4>可行性</h4>
-                <p>{{ topic.feasibility }}</p>
+                <p>{{ topic.feasibility || '未评估' }}</p>
               </div>
 
               <div class="topic-detail-item">
                 <h4>创新点</h4>
-                <p>{{ topic.innovation }}</p>
+                <p>{{ topic.innovation || '无创新点' }}</p>
               </div>
 
               <div class="topic-detail-item">
                 <h4>研究方法</h4>
-                <p>{{ topic.methodology }}</p>
+                <p>{{ topic.methodology || '无研究方法' }}</p>
               </div>
 
               <div class="topic-detail-item">
                 <h4>所需资源</h4>
-                <p>{{ topic.resources }}</p>
+                <p>{{ topic.resources || '无资源需求' }}</p>
               </div>
 
               <div class="topic-detail-item">
                 <h4>预期成果</h4>
-                <p>{{ topic.expected_outcomes }}</p>
+                <p>{{ topic.expected_outcomes || '无预期成果' }}</p>
               </div>
 
               <div class="topic-detail-item">
                 <h4>关键词</h4>
-                <div class="keywords">
+                <div class="keywords" v-if="topic.keywords && topic.keywords.length > 0">
                   <el-tag v-for="(keyword, i) in topic.keywords" :key="i" size="small" class="keyword-tag">
                     {{ keyword }}
                   </el-tag>
                 </div>
+                <p v-else>无关键词</p>
               </div>
 
               <div class="topic-actions">
@@ -112,17 +159,34 @@
 import { ref, reactive } from 'vue';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { Loading } from '@element-plus/icons-vue';
 import { recommendTopics } from '@/api/modules/topics';
+import { analyzeInterests } from '@/api/modules/interests';
 import type { TopicRequest, TopicResponse } from '@/types/topics';
 
 const router = useRouter();
+
+// 判断是否为开发环境
+// 在script中定义变量，而不是在模板中直接使用import.meta
+// 这样可以避免模板解析错误
+const isDev = import.meta.env.DEV;
 
 // 表单数据
 const formData = reactive<TopicRequest>({
   user_interests: '',
   academic_field: '',
-  academic_level: ''
+  academic_level: '',
+  topic_count: 3 // 默认推荐3个主题
 });
+
+// 主题数量标记
+const topicCountMarks = {
+  1: '1',
+  3: '3',
+  5: '5',
+  7: '7',
+  10: '10'
+};
 
 // 表单验证规则
 const rules = {
@@ -179,15 +243,84 @@ const submitForm = async () => {
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
+      topics.value = []; // 清空之前的主题数据
+
       try {
-        const result = await recommendTopics(formData);
-        topics.value = result;
+        // 显示正在生成的提示
+        ElMessage.info('正在分析研究兴趣并生成主题，这可能需要一分钟左右的时间...');
+
+        // 清除之前的主题数据，确保不会显示旧数据
+        topics.value = [];
+
+        // 第一步：分析用户兴趣
+        console.log('开始分析用户兴趣...');
+        const interestAnalysis = await analyzeInterests(formData);
+        console.log('兴趣分析结果:', interestAnalysis);
+
+        if (!interestAnalysis || Object.keys(interestAnalysis).length === 0) {
+          ElMessage.warning('分析用户兴趣失败，请尝试修改您的输入或稍后重试');
+          loading.value = false;
+          return;
+        }
+
+        // 第二步：生成主题推荐
+        console.log('开始生成主题推荐...');
+        // 将兴趣分析结果添加到请求中，使后端可以使用这些信息
+        const enhancedFormData = {
+          ...formData,
+          interest_analysis: interestAnalysis
+        };
+
+        const result = await recommendTopics(enhancedFormData);
+        console.log('接收到的主题数据:', result);
+
+        // 确保结果是数组
+        if (Array.isArray(result) && result.length > 0) {
+          // 深拷贝结果，避免引用问题
+          topics.value = JSON.parse(JSON.stringify(result));
+          console.log('设置主题数组:', topics.value);
+        } else if (result && typeof result === 'object') {
+          // 如果结果是单个对象，将其包装为数组
+          topics.value = [JSON.parse(JSON.stringify(result))];
+          console.log('设置单个主题对象:', topics.value);
+        } else {
+          // 如果结果为空或格式不正确，显示错误信息
+          topics.value = [];
+          ElMessage.warning('未能生成有效的主题，请尝试修改您的输入或稍后重试');
+          console.error('返回的主题数据格式不正确或为空:', result);
+          loading.value = false;
+          return;
+        }
+
+        // 再次检查主题数组是否有效
+        if (topics.value.length === 0) {
+          ElMessage.warning('未能生成有效的主题，请尝试修改您的输入或稍后重试');
+          loading.value = false;
+          return;
+        }
+
+        console.log('设置后的topics值:', topics.value);
+        console.log('主题数量:', topics.value.length);
+
         if (topics.value.length === 0) {
           ElMessage.warning('未找到匹配的主题，请尝试调整您的研究兴趣或学术领域');
+        } else {
+          ElMessage.success(`成功获取 ${topics.value.length} 个推荐主题`);
+          // 强制展开所有主题
+          activeTopics.value = topics.value.map((_, index) => index);
+
+          // 滚动到主题列表
+          setTimeout(() => {
+            const topicsElement = document.querySelector('.topic-results-card');
+            if (topicsElement) {
+              topicsElement.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 100);
         }
       } catch (error) {
         console.error('获取推荐主题失败:', error);
         ElMessage.error('获取推荐主题失败，请稍后重试');
+        topics.value = [];
       } finally {
         loading.value = false;
       }
@@ -313,6 +446,10 @@ const refineTopic = (topic: TopicResponse) => {
   margin-top: 20px;
 }
 
+.topics-summary {
+  margin-bottom: 20px;
+}
+
 .topic-title {
   display: flex;
   align-items: center;
@@ -373,6 +510,55 @@ const refineTopic = (topic: TopicResponse) => {
   margin-top: 20px;
   display: flex;
   gap: 10px;
+}
+
+/* 调试信息样式 */
+.debug-info {
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #f0f9eb;
+  border: 1px solid #e1f3d8;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.debug-info pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 加载中状态样式 */
+.loading-card {
+  margin-bottom: 30px;
+}
+
+.loading-container {
+  padding: 20px 0;
+}
+
+.loading-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+  color: #909399;
+}
+
+/* 滑块描述样式 */
+.slider-description {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.loading-text .el-icon {
+  margin-right: 8px;
+  font-size: 18px;
 }
 
 @media (max-width: 768px) {

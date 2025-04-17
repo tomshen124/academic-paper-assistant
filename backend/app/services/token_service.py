@@ -2,8 +2,11 @@ from typing import Dict, List, Any, Optional
 import time
 import json
 from datetime import datetime
+from sqlalchemy.orm import Session
 from app.core.logger import get_logger
 from app.utils.token_counter import token_counter
+from app.db.session import SessionLocal
+from app.models.token_usage import TokenUsage
 
 # 创建日志器
 logger = get_logger("token_service")
@@ -26,7 +29,9 @@ class TokenService:
         prompt_tokens: int,
         completion_tokens: int,
         service: str = "unknown",
-        task: str = "unknown"
+        task: str = "unknown",
+        user_id: int = None,
+        db: Session = None
     ) -> Dict[str, Any]:
         """记录token使用情况"""
         try:
@@ -109,6 +114,43 @@ class TokenService:
                 f"输入={prompt_tokens}, 输出={completion_tokens}, "
                 f"总计={total_tokens}, 成本=${cost:.4f}"
             )
+
+            # 如果提供了用户ID，将记录保存到数据库
+            if user_id is not None:
+                try:
+                    # 如果没有提供数据库会话，创建一个新的
+                    close_db = False
+                    if db is None:
+                        db = SessionLocal()
+                        close_db = True
+
+                    # 创建数据库记录
+                    db_record = TokenUsage(
+                        user_id=user_id,
+                        model=model,
+                        service=service,
+                        task=task,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        estimated_cost=cost
+                    )
+
+                    # 添加并提交
+                    db.add(db_record)
+                    db.commit()
+
+                    logger.info(f"Token使用记录已保存到数据库，ID: {db_record.id}")
+
+                    # 如果是我们创建的会话，关闭它
+                    if close_db:
+                        db.close()
+                except Exception as e:
+                    logger.error(f"保存Token使用记录到数据库失败: {str(e)}")
+                    # 如果是我们创建的会话，回滚并关闭
+                    if close_db and db is not None:
+                        db.rollback()
+                        db.close()
 
             return record
 

@@ -43,7 +43,7 @@ export default defineConfig(({ command, mode }) => {
     server: {
       host: '0.0.0.0',  // 允许外部访问
       port: Number(env.VITE_PORT) || 3000,
-      open: true,
+      open: false,
       proxy: {
         '/api/v1': {
           target: env.VITE_API_TARGET || 'http://localhost:8000',

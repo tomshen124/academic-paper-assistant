@@ -166,6 +166,20 @@ const routes: RouteRecordRaw[] = [
         name: 'Tokens',
         component: () => import('@/views/tokens/TokenUsage.vue'),
         meta: { title: 'Token管理' }
+      },
+
+      // 用户相关路由
+      {
+        path: '/profile',
+        name: 'Profile',
+        component: () => import('@/views/auth/Profile.vue'),
+        meta: { title: '个人信息' }
+      },
+      {
+        path: '/settings',
+        name: 'Settings',
+        component: () => import('@/views/auth/Settings.vue'),
+        meta: { title: '系统设置' }
       }
     ]
   },

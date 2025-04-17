@@ -6,6 +6,8 @@ class TopicRequest(BaseModel):
     user_interests: str = Field(..., description="用户研究兴趣")
     academic_field: str = Field(..., description="学术领域")
     academic_level: str = Field("undergraduate", description="学术级别")
+    topic_count: int = Field(3, description="推荐主题数量", ge=1, le=10)
+    interest_analysis: Dict[str, Any] = Field(None, description="兴趣分析结果")
 
 class TopicResponse(BaseModel):
     """论文主题响应"""

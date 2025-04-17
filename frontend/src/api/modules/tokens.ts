@@ -1,9 +1,11 @@
-import request from '@/utils/request';
+import { request } from '@/utils/request';
 import type {
   TokenUsageResponse,
   TokenUsageExportRequest,
   TokenUsageExportResponse,
-  TokenUsageResetResponse
+  TokenUsageResetResponse,
+  UserTokenUsageRecord,
+  UserTokenUsageSummary
 } from '@/types/tokens';
 
 /**
@@ -37,5 +39,27 @@ export function resetTokenUsage() {
   return request<TokenUsageResetResponse>({
     url: '/tokens/reset',
     method: 'post'
+  });
+}
+
+/**
+ * 获取用户token使用记录
+ * @param params 查询参数
+ */
+export function getUserTokenUsage(params: { skip?: number; limit?: number } = {}) {
+  return request<UserTokenUsageRecord[]>({
+    url: '/tokens/user-usage',
+    method: 'get',
+    params
+  });
+}
+
+/**
+ * 获取用户token使用摘要
+ */
+export function getUserTokenUsageSummary() {
+  return request<UserTokenUsageSummary>({
+    url: '/tokens/user-summary',
+    method: 'get'
   });
 }
