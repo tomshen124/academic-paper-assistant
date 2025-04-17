@@ -81,6 +81,18 @@ llm:
   cache_enable: true         # 是否启用LLM缓存
   cache_folder: ".cache/litellm"  # 缓存目录
 
+  # 模型提供商映射
+  model_providers:
+    # 模型名称到提供商的映射
+    deepseek-chat: "deepseek"      # DeepSeek模型
+    deepseek-reasoner: "deepseek"  # DeepSeek推理模型
+    gpt-3.5-turbo: "openai"        # OpenAI模型
+    gpt-4: "openai"                # OpenAI GPT-4模型
+    claude-2: "anthropic"          # Anthropic Claude模型
+    "Qwen/QwQ-32B": "openai"       # 使用OpenAI兼容API的模型
+    qwen-turbo: "openai"           # 阿里云模型（OpenAI兼容）
+    qwen-plus: "openai"            # 阿里云模型（OpenAI兼容）
+
   # 智能体配置
   agent_configs:
     # 写作智能体

@@ -24,12 +24,16 @@ def configure_litellm():
     # 启用详细日志
     litellm.set_verbose = True
 
+    # 从配置文件中获取模型提供商映射
+    model_providers = settings.config.get("llm", {}).get("model_providers", {})
+    logger.info(f"从配置文件加载模型提供商映射: {model_providers}")
+
     # 配置模型映射
     model_mappings = {}
 
     # OpenAI模型 (如果配置了API密钥)
     if settings.OPENAI_API_KEY:
-        model_mappings.update({
+        openai_models = {
             "gpt-3.5-turbo": {
                 "litellm_params": {
                     "model": "openai/gpt-3.5-turbo",
@@ -44,71 +48,108 @@ def configure_litellm():
                     "api_base": settings.OPENAI_API_BASE or "https://api.openai.com/v1"
                 }
             }
-        })
+        }
+
+        # 从配置文件中获取提供商类型
+        for model_name, model_config in openai_models.items():
+            provider = model_providers.get(model_name, "openai")
+            model_config["litellm_params"]["custom_llm_provider"] = provider
+            logger.info(f"模型 {model_name} 使用提供商: {provider}")
+
+        model_mappings.update(openai_models)
 
     # DeepSeek模型 (如果配置了API密钥)
     if settings.DEEPSEEK_API_KEY:
-        model_mappings.update({
+        deepseek_models = {
             "deepseek-chat": {
                 "litellm_params": {
                     "model": "deepseek/deepseek-chat",
                     "api_key": settings.DEEPSEEK_API_KEY,
-                    "api_base": settings.DEEPSEEK_API_URL
+                    "api_base": settings.DEEPSEEK_API_URL,
                 }
             },
             "deepseek-reasoner": {
                 "litellm_params": {
                     "model": "deepseek/deepseek-reasoner",
                     "api_key": settings.DEEPSEEK_API_KEY,
-                    "api_base": settings.DEEPSEEK_API_URL
+                    "api_base": settings.DEEPSEEK_API_URL,
                 }
             }
-        })
+        }
+
+        # 从配置文件中获取提供商类型
+        for model_name, model_config in deepseek_models.items():
+            provider = model_providers.get(model_name, "deepseek")
+            model_config["litellm_params"]["custom_llm_provider"] = provider
+            logger.info(f"模型 {model_name} 使用提供商: {provider}")
+
+        model_mappings.update(deepseek_models)
 
     # Anthropic模型 (如果配置了API密钥)
     if settings.ANTHROPIC_API_KEY:
-        model_mappings.update({
+        anthropic_models = {
             "claude-2": {
                 "litellm_params": {
                     "model": "anthropic/claude-2",
                     "api_key": settings.ANTHROPIC_API_KEY
                 }
             }
-        })
+        }
+
+        # 从配置文件中获取提供商类型
+        for model_name, model_config in anthropic_models.items():
+            provider = model_providers.get(model_name, "anthropic")
+            model_config["litellm_params"]["custom_llm_provider"] = provider
+            logger.info(f"模型 {model_name} 使用提供商: {provider}")
+
+        model_mappings.update(anthropic_models)
 
     # SiliconFlow模型 (如果配置了API密钥)
     if settings.SILICONFLOW_API_KEY:
-        model_mappings.update({
+        siliconflow_models = {
             "Qwen/QwQ-32B": {
                 "litellm_params": {
                     "model": "openai/gpt-3.5-turbo",  # 使用OpenAI兼容格式
                     "api_key": settings.SILICONFLOW_API_KEY,
-                    "api_base": settings.SILICONFLOW_API_URL,
-                    "custom_llm_provider": "openai"  # 指定使用OpenAI兼容API
+                    "api_base": settings.SILICONFLOW_API_URL
                 }
             }
-        })
+        }
+
+        # 从配置文件中获取提供商类型
+        for model_name, model_config in siliconflow_models.items():
+            provider = model_providers.get(model_name, "openai")  # 默认使用OpenAI兼容API
+            model_config["litellm_params"]["custom_llm_provider"] = provider
+            logger.info(f"模型 {model_name} 使用提供商: {provider}")
+
+        model_mappings.update(siliconflow_models)
 
     # 阿里云模型 (如果配置了API密钥)
     if hasattr(settings, 'ALIYUN_API_KEY') and settings.ALIYUN_API_KEY:
-        model_mappings.update({
+        aliyun_models = {
             "qwen-turbo": {
                 "litellm_params": {
                     "model": "openai/gpt-3.5-turbo",  # 使用OpenAI兼容格式
                     "api_key": settings.ALIYUN_API_KEY,
-                    "api_base": settings.ALIYUN_API_URL,
-                    "custom_llm_provider": "openai"  # 指定使用OpenAI兼容API
+                    "api_base": settings.ALIYUN_API_URL
                 }
             },
             "qwen-plus": {
                 "litellm_params": {
                     "model": "openai/gpt-4",  # 使用OpenAI兼容格式
                     "api_key": settings.ALIYUN_API_KEY,
-                    "api_base": settings.ALIYUN_API_URL,
-                    "custom_llm_provider": "openai"  # 指定使用OpenAI兼容API
+                    "api_base": settings.ALIYUN_API_URL
                 }
             }
-        })
+        }
+
+        # 从配置文件中获取提供商类型
+        for model_name, model_config in aliyun_models.items():
+            provider = model_providers.get(model_name, "openai")  # 默认使用OpenAI兼容API
+            model_config["litellm_params"]["custom_llm_provider"] = provider
+            logger.info(f"模型 {model_name} 使用提供商: {provider}")
+
+        model_mappings.update(aliyun_models)
 
     # 注册模型映射
     for model_name, config in model_mappings.items():
