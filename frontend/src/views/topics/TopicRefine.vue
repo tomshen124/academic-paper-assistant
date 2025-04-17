@@ -7,7 +7,7 @@
           <p>根据您的反馈优化论文主题，使其更加明确和可行</p>
         </div>
       </template>
-      
+
       <div class="refine-form">
         <el-form :model="formData" label-position="top" :rules="rules" ref="formRef">
           <el-form-item label="原始主题" prop="topic">
@@ -16,7 +16,7 @@
               placeholder="请输入原始论文主题"
             />
           </el-form-item>
-          
+
           <el-form-item label="您的反馈" prop="feedback">
             <el-input
               v-model="formData.feedback"
@@ -25,19 +25,19 @@
               placeholder="请描述您希望如何改进这个主题，例如：缩小研究范围、更加具体化、调整研究方向等"
             />
           </el-form-item>
-          
+
           <el-form-item label="学术领域" prop="academic_field">
             <el-select v-model="formData.academic_field" placeholder="请选择学术领域" style="width: 100%">
               <el-option v-for="field in academicFields" :key="field" :label="field" :value="field" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="学术级别">
             <el-select v-model="formData.academic_level" placeholder="请选择学术级别" style="width: 100%">
               <el-option v-for="level in academicLevels" :key="level" :label="level" :value="level" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" :loading="loading" @click="submitForm">优化主题</el-button>
             <el-button @click="resetForm">重置</el-button>
@@ -45,48 +45,48 @@
         </el-form>
       </div>
     </el-card>
-    
+
     <el-card v-if="refinedTopic" class="result-card">
       <template #header>
         <div class="card-header">
           <h2>优化结果</h2>
         </div>
       </template>
-      
+
       <div class="refine-result">
         <div class="comparison">
           <div class="original-topic">
             <h3>原始主题</h3>
             <p>{{ formData.topic }}</p>
           </div>
-          
+
           <div class="arrow">
             <el-icon :size="24"><Right /></el-icon>
           </div>
-          
+
           <div class="refined-topic">
             <h3>优化后的主题</h3>
             <p>{{ refinedTopic.refined_title }}</p>
           </div>
         </div>
-        
+
         <el-divider />
-        
+
         <div class="result-section">
           <h3>明确的研究问题</h3>
           <p>{{ refinedTopic.research_question }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>研究范围</h3>
           <p>{{ refinedTopic.scope }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>建议的研究方法</h3>
           <p>{{ refinedTopic.methodology }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>关键词</h3>
           <div class="keywords">
@@ -95,12 +95,12 @@
             </el-tag>
           </div>
         </div>
-        
+
         <div class="result-section improvements">
           <h3>改进之处</h3>
           <p>{{ refinedTopic.improvements }}</p>
         </div>
-        
+
         <div class="result-actions">
           <el-button type="primary" @click="useRefinedTopic">使用此主题</el-button>
           <el-button type="success" @click="analyzeFeasibility">分析可行性</el-button>
@@ -187,7 +187,7 @@ onMounted(() => {
   if (topicParam) {
     formData.topic = decodeURIComponent(topicParam as string);
   }
-  
+
   // 从本地存储中获取选中的主题
   const selectedTopic = localStorage.getItem('selectedTopic');
   if (selectedTopic && !formData.topic) {
@@ -205,7 +205,7 @@ onMounted(() => {
 // 提交表单
 const submitForm = async () => {
   if (!formRef.value) return;
-  
+
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
@@ -231,25 +231,68 @@ const resetForm = () => {
   refinedTopic.value = null;
 };
 
+// 将主题保存到历史记录
+const saveTopicToHistory = (topic: any) => {
+  // 从本地存储中获取历史记录
+  let topicsHistory: Array<any> = [];
+  const historyStr = localStorage.getItem('topicsHistory');
+
+  if (historyStr) {
+    try {
+      topicsHistory = JSON.parse(historyStr);
+    } catch (error) {
+      console.error('解析主题历史记录失败:', error);
+    }
+  }
+
+  // 检查主题是否已存在
+  const exists = topicsHistory.some(t => t.title === topic.title);
+
+  if (!exists) {
+    // 生成唯一ID
+    const id = `topic-${Date.now()}`;
+    topicsHistory.push({
+      ...topic,
+      id
+    });
+
+    // 如果历史记录超过10个，删除最早的
+    if (topicsHistory.length > 10) {
+      topicsHistory.shift();
+    }
+
+    // 保存到本地存储
+    localStorage.setItem('topicsHistory', JSON.stringify(topicsHistory));
+  }
+};
+
 // 使用优化后的主题
 const useRefinedTopic = () => {
   if (!refinedTopic.value) return;
-  
-  // 将优化后的主题存储到本地存储
-  localStorage.setItem('selectedTopic', JSON.stringify({
+
+  // 创建主题对象
+  const topic = {
     title: refinedTopic.value.refined_title,
     academic_field: formData.academic_field,
     academic_level: formData.academic_level,
-    keywords: refinedTopic.value.keywords
-  }));
-  
+    keywords: refinedTopic.value.keywords,
+    research_question: refinedTopic.value.research_question || '',
+    scope: refinedTopic.value.scope || ''
+  };
+
+  // 将优化后的主题存储到本地存储
+  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+
+  // 保存到主题历史记录
+  saveTopicToHistory(topic);
+
   ElMessage.success(`已选择主题: ${refinedTopic.value.refined_title}`);
 };
 
 // 分析可行性
 const analyzeFeasibility = () => {
   if (!refinedTopic.value) return;
-  
+
   router.push({
     name: 'TopicAnalyze',
     params: {
@@ -261,15 +304,23 @@ const analyzeFeasibility = () => {
 // 生成提纲
 const generateOutline = () => {
   if (!refinedTopic.value) return;
-  
-  // 将优化后的主题存储到本地存储
-  localStorage.setItem('selectedTopic', JSON.stringify({
+
+  // 创建主题对象
+  const topic = {
     title: refinedTopic.value.refined_title,
     academic_field: formData.academic_field,
     academic_level: formData.academic_level,
-    keywords: refinedTopic.value.keywords
-  }));
-  
+    keywords: refinedTopic.value.keywords,
+    research_question: refinedTopic.value.research_question || '',
+    scope: refinedTopic.value.scope || ''
+  };
+
+  // 将优化后的主题存储到本地存储
+  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+
+  // 保存到主题历史记录
+  saveTopicToHistory(topic);
+
   router.push({
     name: 'OutlineGenerate'
   });
@@ -385,12 +436,12 @@ const generateOutline = () => {
   .comparison {
     flex-direction: column;
   }
-  
+
   .arrow {
     margin: 20px 0;
     transform: rotate(90deg);
   }
-  
+
   .result-actions {
     flex-direction: column;
   }

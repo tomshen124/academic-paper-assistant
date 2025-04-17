@@ -94,9 +94,20 @@
             </el-icon>
           </el-button>
           <div class="header-right">
-            <el-button type="link">
-              <el-icon><Setting /></el-icon>
-            </el-button>
+            <el-dropdown @command="handleCommand">
+              <span class="user-dropdown">
+                <el-avatar :size="32" icon="UserFilled" />
+                <span v-if="authStore.userInfo" class="username">{{ authStore.userInfo.username }}</span>
+                <el-icon><ArrowDown /></el-icon>
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="profile">个人信息</el-dropdown-item>
+                  <el-dropdown-item command="settings">设置</el-dropdown-item>
+                  <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </el-header>
         <el-main class="main">
@@ -113,7 +124,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { ElMessageBox } from 'element-plus'
 import {
   Document,
   DocumentAdd,
@@ -130,14 +143,39 @@ import {
   Star,
   Setting,
   Fold,
-  Expand
+  Expand,
+  ArrowDown,
+  UserFilled
 } from '@element-plus/icons-vue'
 
 const isCollapse = ref(false)
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 
 const toggleCollapse = () => {
   isCollapse.value = !isCollapse.value
+}
+
+// 处理下拉菜单命令
+const handleCommand = (command: string) => {
+  switch (command) {
+    case 'profile':
+      router.push('/profile')
+      break
+    case 'settings':
+      router.push('/settings')
+      break
+    case 'logout':
+      ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        authStore.logout()
+      }).catch(() => {})
+      break
+  }
 }
 </script>
 
@@ -187,6 +225,24 @@ const toggleCollapse = () => {
       display: flex;
       align-items: center;
       gap: 16px;
+
+      .user-dropdown {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 0 8px;
+        border-radius: 4px;
+        transition: background-color 0.3s;
+
+        &:hover {
+          background-color: #f5f7fa;
+        }
+
+        .username {
+          margin: 0 8px;
+          font-size: 14px;
+        }
+      }
     }
   }
   .main {

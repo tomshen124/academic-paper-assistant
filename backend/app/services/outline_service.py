@@ -10,28 +10,40 @@ logger = get_logger("outline_service")
 
 class OutlineService:
     """论文提纲生成服务"""
-    
+
     def __init__(self):
         """初始化提纲生成服务"""
         self.llm_service = llm_service
         self.academic_search_service = academic_search_service
         logger.info("提纲生成服务初始化完成")
-    
+
+    def _clean_json_response(self, content: str) -> str:
+        """清理LLM响应中的Markdown代码块标记"""
+        # 移除可能的Markdown代码块标记
+        import re
+        # 匹配```json和```之间的内容
+        json_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', content)
+        if json_block_match:
+            # 返回代码块内的内容
+            return json_block_match.group(1).strip()
+        # 如果没有代码块标记，返回原始内容
+        return content
+
     async def generate_outline(
-        self, 
-        topic: str, 
-        paper_type: str, 
-        academic_field: str, 
+        self,
+        topic: str,
+        paper_type: str,
+        academic_field: str,
         academic_level: str = "undergraduate",
         length: str = "3000words"
     ) -> Dict[str, Any]:
         """生成论文提纲"""
         try:
             logger.info(f"生成论文提纲: 主题={topic}, 类型={paper_type}, 领域={academic_field}, 长度={length}")
-            
+
             # 搜索相关文献
             papers = await self.academic_search_service.search_academic_papers(topic, limit=5)
-            
+
             # 构建系统提示
             system_prompt = "你是一个学术论文提纲生成专家。你的任务是为以下论文主题生成详细的提纲。\n\n"
             system_prompt += f"论文主题: {topic}\n"
@@ -94,10 +106,13 @@ class OutlineService:
                 max_tokens=2500,
                 temperature=0.4
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -115,23 +130,23 @@ class OutlineService:
                         return result
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回空字典
                 return {}
-                
+
         except Exception as e:
             logger.error(f"生成提纲失败: {str(e)}")
             return {}
-    
+
     async def optimize_outline(
-        self, 
-        outline: Dict[str, Any], 
+        self,
+        outline: Dict[str, Any],
         feedback: str
     ) -> Dict[str, Any]:
         """优化论文提纲"""
         try:
             logger.info(f"优化论文提纲: 反馈={feedback}")
-            
+
             # 构建系统提示
             system_prompt = "你是一个学术论文提纲优化专家。你的任务是根据反馈优化以下论文提纲。\n\n"
             system_prompt += f"原始提纲:\n{json.dumps(outline, ensure_ascii=False)}\n\n"
@@ -145,10 +160,13 @@ class OutlineService:
                 max_tokens=2500,
                 temperature=0.3
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -166,23 +184,23 @@ class OutlineService:
                         return result
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回原始提纲
                 return outline
-                
+
         except Exception as e:
             logger.error(f"优化提纲失败: {str(e)}")
             return outline
-    
+
     async def get_outline_templates(
-        self, 
-        paper_type: str, 
+        self,
+        paper_type: str,
         academic_field: str
     ) -> List[Dict[str, Any]]:
         """获取提纲模板"""
         try:
             logger.info(f"获取提纲模板: 类型={paper_type}, 领域={academic_field}")
-            
+
             # 构建系统提示
             system_prompt = "你是一个学术论文提纲模板专家。你的任务是为以下论文类型和学术领域提供3个提纲模板。\n\n"
             system_prompt += f"论文类型: {paper_type}\n"
@@ -218,10 +236,13 @@ class OutlineService:
                 max_tokens=1500,
                 temperature=0.5
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -241,22 +262,22 @@ class OutlineService:
                         return templates
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回空列表
                 return []
-                
+
         except Exception as e:
             logger.error(f"获取提纲模板失败: {str(e)}")
             return []
-    
+
     async def validate_outline_logic(
-        self, 
+        self,
         outline: Dict[str, Any]
     ) -> Dict[str, Any]:
         """验证提纲逻辑"""
         try:
             logger.info(f"验证提纲逻辑: {outline.get('title', 'N/A')}")
-            
+
             # 构建系统提示
             system_prompt = "你是一个学术论文提纲逻辑分析专家。你的任务是分析以下论文提纲的逻辑结构，找出潜在问题并提供改进建议。\n\n"
             system_prompt += f"提纲:\n{json.dumps(outline, ensure_ascii=False)}\n\n"
@@ -300,10 +321,13 @@ class OutlineService:
                 max_tokens=1500,
                 temperature=0.3
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -321,10 +345,10 @@ class OutlineService:
                         return result
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回空字典
                 return {}
-                
+
         except Exception as e:
             logger.error(f"验证提纲逻辑失败: {str(e)}")
             return {}

@@ -123,6 +123,37 @@ class Settings(BaseSettings):
     def PROJECT_NAME(self) -> str:
         return self.config.get("app", {}).get("name", "学术论文辅助平台")
 
+    @property
+    def DATABASE_USER(self) -> str:
+        return os.environ.get("DATABASE_USER", "postgres")
+
+    @property
+    def DATABASE_PASSWORD(self) -> str:
+        return os.environ.get("DATABASE_PASSWORD", "postgres")
+
+    @property
+    def DATABASE_HOST(self) -> str:
+        return os.environ.get("DATABASE_HOST", "localhost")
+
+    @property
+    def DATABASE_PORT(self) -> str:
+        return os.environ.get("DATABASE_PORT", "5432")
+
+    @property
+    def DATABASE_NAME(self) -> str:
+        return os.environ.get("DATABASE_NAME", "academic_paper_assistant")
+
+    @property
+    def DATABASE_URL(self) -> str:
+        """构建数据库URL"""
+        return (
+            f"postgresql://{self.DATABASE_USER}:"
+            f"{self.DATABASE_PASSWORD}@"
+            f"{self.DATABASE_HOST}:"
+            f"{self.DATABASE_PORT}/"
+            f"{self.DATABASE_NAME}"
+        )
+
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置值，类似于字典的get方法"""
         # 先尝试从对象属性中获取

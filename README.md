@@ -13,14 +13,18 @@
 - **论文草稿生成**：根据提纲生成各章节内容，确保学术风格
 - **引用管理**：自动生成符合规范的引用格式，支持多种引用标准
 - **学术搜索**：搜索与研究主题相关的学术文献，支持多种搜索源和参数配置
+- **用户认证**：支持用户注册、登录和权限管理
+- **数据持久化**：将用户数据存储在数据库中，确保数据安全和可靠性
+- **Token管理**：跟踪和管理用户的Token使用情况
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.8+
+- Python 3.10+
 - Node.js 16+
 - npm 8+
+- PostgreSQL 12+
 
 ### 安装
 
@@ -35,24 +39,27 @@ cd edu-kg
 
 ```bash
 # 创建并激活虚拟环境
-python -m venv eduvenv
+python3.10 -m venv eduvenv
 source eduvenv/bin/activate  # Linux/macOS
 # 或
 .\eduvenv\Scripts\activate  # Windows
 
 # 安装依赖
-python start.py --install-deps
+python3.10 start.py --install-deps
 
 # 配置环境变量
 cp config/.env.example config/.env
-# 编辑 .env 文件，填入必要的 API 密钥
+# 编辑 .env 文件，填入必要的 API 密钥和数据库配置
+
+# 创建数据库
+psql -U postgres -c "CREATE DATABASE academic_paper_assistant;"
 ```
 
 3. 启动服务
 
 ```bash
 # 使用统一启动脚本
-python start.py
+python3.10 start.py
 ```
 
 访问 http://localhost:3000 开始使用平台。
@@ -64,19 +71,26 @@ python start.py
 - [用户指南](docs/user_guide.md)：安装、配置和使用指南
 - [实现状态](docs/implementation_status.md)：当前功能实现状态
 - [项目设计](docs/project_design.md)：架构和设计文档
+- [数据库设计](docs/database_design.md)：数据库模型和关系设计
 
 ## 技术栈
 
 ### 后端
 
 - FastAPI：高性能 API 框架
+- SQLAlchemy：强大的 ORM 框架
+- PostgreSQL：关系型数据库
+- Alembic：数据库迁移工具
 - LiteLLM：统一的 LLM 接口
 - Loguru：高级日志系统
 - Pydantic：数据验证和设置管理
+- JWT：用户认证和授权
 
 ### 前端
 
 - Vue.js：渐进式 JavaScript 框架
+- Vue Router：前端路由管理
+- Pinia：状态管理库
 - Element Plus：UI 组件库
 - Axios：HTTP 客户端
 
@@ -85,8 +99,24 @@ python start.py
 - **多模型支持**：支持 OpenAI、Anthropic、DeepSeek 等多种 LLM 模型
 - **多智能体协作**：基于 CAMEL 框架的多智能体协作系统
 - **可配置学术搜索**：支持多种学术搜索源和参数配置
+- **数据库持久化**：使用 PostgreSQL 数据库存储用户数据和应用状态
+- **用户认证系统**：基于 JWT 的安全用户认证和授权
+- **Token 使用跟踪**：详细记录和统计用户的 Token 使用情况
 - **MCP 集成**：预留 Model Context Protocol 集成接口
 - **统一启动脚本**：简化开发和部署流程
+
+## 数据库架构
+
+本项目使用 PostgreSQL 数据库进行数据持久化存储，主要数据模型包括：
+
+- **用户模型 (User)**：存储用户信息和认证数据
+- **主题模型 (Topic)**：存储论文主题信息和分析结果
+- **提纲模型 (Outline)**：存储论文提纲结构
+- **论文模型 (Paper)**：存储论文内容
+- **引用模型 (Citation)**：存储论文引用信息
+- **Token使用记录模型 (TokenUsage)**：记录用户的Token使用情况
+
+详细的数据库设计请参考[数据库设计文档](docs/database_design.md)。
 
 ## 贡献
 

@@ -14,7 +14,7 @@
 ## 环境要求
 
 - **操作系统**：支持 Linux、macOS 和 Windows
-- **Python**：3.8 或更高版本
+- **Python**：3.10 或更高版本
 - **Node.js**：16.0 或更高版本
 - **npm**：8.0 或更高版本
 - **内存**：至少 4GB RAM（推荐 8GB 或更多）
@@ -33,7 +33,7 @@ cd edu-kg
 
 ```bash
 # 创建并激活虚拟环境
-python -m venv eduvenv
+python3.10 -m venv eduvenv
 source eduvenv/bin/activate  # Linux/macOS
 # 或
 .\eduvenv\Scripts\activate  # Windows
@@ -73,12 +73,12 @@ source eduvenv/bin/activate  # Linux/macOS
 .\eduvenv\Scripts\activate  # Windows
 
 # 启动服务
-python start.py
+python3.10 start.py
 ```
 
 启动脚本支持以下参数：
 
-- `--venv`：指定 Python 虚拟环境路径，如果不指定则使用系统 Python
+- `--venv`：指定 Python 虚拟环境路径，如果不指定则使用默认的 eduvenv 虚拟环境
 - `--backend-port`：指定后端服务端口，默认为 8000
 - `--frontend-port`：指定前端服务端口，默认为 3000
 - `--install-deps`：安装依赖（默认不安装）
@@ -87,13 +87,13 @@ python start.py
 
 ```bash
 # 使用指定的虚拟环境
-python start.py --venv eduvenv
+python3.10 start.py --venv eduvenv
 
 # 指定端口
-python start.py --backend-port 8080 --frontend-port 8081
+python3.10 start.py --backend-port 8080 --frontend-port 8081
 
 # 安装依赖
-python start.py --install-deps
+python3.10 start.py --install-deps
 ```
 
 ### 分别启动服务

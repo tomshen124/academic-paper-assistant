@@ -1,90 +1,181 @@
+# 学术论文辅助平台配置文件
+
+# ==========================================
 # 项目基础配置
+# ==========================================
 app:
   name: "Academic Paper Assistant"
   version: "1.0.0"
-  environment: "development"
-  debug: true
-  api_prefix: "/api/v1"
+  environment: "development"  # 可在.env中覆盖：development, production, test
+  debug: true                # 开发模式下为true，生产环境应设置为false
+  api_prefix: "/api/v1"      # API前缀
 
+# ==========================================
 # 服务器配置
+# ==========================================
 server:
-  host: "0.0.0.0"
-  port: 8000
-  workers: 4
-  reload: true
+  host: "0.0.0.0"            # 监听地址
+  port: 8000                 # 监听端口
+  workers: 4                 # 工作进程数，生产环境可考虑增加
+  reload: true               # 开发模式下自动重载，生产环境应设置为false
 
+# ==========================================
 # 数据库配置（敏感信息从.env读取）
+# ==========================================
 database:
-  pool_size: 20
-  max_overflow: 10
-  pool_timeout: 30
-  pool_recycle: 1800
+  pool_size: 20              # 连接池大小
+  max_overflow: 10           # 最大溢出连接数
+  pool_timeout: 30           # 连接池超时时间（秒）
+  pool_recycle: 1800         # 连接回收时间（秒）
 
+# ==========================================
 # CORS配置
+# ==========================================
 cors:
-  allow_origins: ["*"]
-  allow_methods: ["*"]
-  allow_headers: ["*"]
-  allow_credentials: true
+  allow_origins: ["*"]       # 允许的源，生产环境应限制为特定域名
+  allow_methods: ["*"]       # 允许的HTTP方法
+  allow_headers: ["*"]       # 允许的HTTP头
+  allow_credentials: true    # 是否允许发送认证信息
 
+# ==========================================
 # 缓存配置
+# ==========================================
 cache:
-  enabled: true
-  type: "memory"  # 可选：redis, memory
-  prefix: "apa:"
-  default_ttl: 3600
+  enabled: true              # 是否启用缓存
+  type: "memory"             # 缓存类型：memory(内存) 或 redis
+  prefix: "apa:"             # 缓存键前缀
+  default_ttl: 3600          # 默认缓存过期时间（秒）
 
+# ==========================================
 # 日志配置
+# ==========================================
 logging:
-  level: "INFO"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: "logs/app.log"
-  max_size: 10485760  # 10MB
-  backup_count: 5
+  level: "INFO"              # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # 日志格式
+  file: "logs/app.log"       # 日志文件路径
+  max_size: 10485760         # 日志文件最大大小（10MB）
+  backup_count: 5            # 备份日志文件数量
 
+# ==========================================
 # 性能优化配置
+# ==========================================
 performance:
-  batch_size: 1000  # 批量操作大小
-  max_workers: 4  # 最大工作线程数
-  query_timeout: 30  # 查询超时时间（秒）
+  batch_size: 1000           # 批量操作大小
+  max_workers: 4             # 最大工作线程数
+  query_timeout: 30          # 查询超时时间（秒）
 
+# ==========================================
 # LLM配置
+# ==========================================
 llm:
-  default_model: "gpt-3.5-turbo"
-  max_tokens: 4096
-  temperature: 0.6
-  top_p: 0.9
-  frequency_penalty: 0.0
-  presence_penalty: 0.0
-  cache_enable: true
-  cache_folder: ".cache/litellm"
+  # 默认模型配置
+  default_model: "gpt-3.5-turbo"  # 默认使用的模型，可在.env中覆盖
+  max_tokens: 4096           # 最大token数
+  temperature: 0.6           # 温度参数，控制生成文本的随机性
+  top_p: 0.9                 # Top-p采样参数
+  frequency_penalty: 0.0     # 频率惩罚，降低重复内容
+  presence_penalty: 0.0      # 存在惩罚，鼓励模型讨论新主题
 
+  # 缓存配置
+  cache_enable: true         # 是否启用LLM缓存
+  cache_folder: ".cache/litellm"  # 缓存目录
+
+  # 智能体配置
+  agent_configs:
+    # 写作智能体
+    writing:
+      model: "gpt-3.5-turbo"  # 使用的模型
+      temperature: 0.7        # 温度参数
+      system_prompt: "你是一位专业的学术写作专家，擅长撰写清晰、结构化的学术论文。"
+
+    # 审核智能体
+    review:
+      model: "gpt-3.5-turbo"  # 使用的模型
+      temperature: 0.3        # 温度参数
+      system_prompt: "你是一位经验丰富的论文审稿人，擅长发现论文中的问题并提供建设性意见。"
+
+    # 文献研究智能体
+    literature:
+      model: "gpt-3.5-turbo"  # 使用的模型
+      temperature: 0.5        # 温度参数
+      system_prompt: "你是一位文献研究专家，擅长分析和总结学术文献。"
+
+# ==========================================
 # 学术搜索配置
+# ==========================================
 academic_search:
   # 启用的搜索源
   enabled_sources:
-    semantic_scholar: true
-    arxiv: true
-    google_scholar: false  # 默认禁用，容易被IP封禁
+    semantic_scholar: true    # 是否启用Semantic Scholar
+    arxiv: true               # 是否启用arXiv
+    google_scholar: false     # 是否启用Google Scholar（默认禁用，容易被IP封禁）
 
   # 默认搜索参数
   default_params:
-    limit: 10
-    sort_by: "relevance"  # relevance, citations, date
-    years: "all"  # all, last_1, last_5, last_10
+    limit: 10                 # 默认返回结果数量
+    sort_by: "relevance"      # 排序方式：relevance(相关性), citations(引用数), date(日期)
+    years: "all"              # 年份范围：all(所有), last_1(近1年), last_5(近5年), last_10(近10年)
 
   # Semantic Scholar配置
   semantic_scholar:
-    api_url: "https://api.semanticscholar.org/graph/v1"
-    fields: "title,authors,year,abstract,url,venue,citationCount,references"
-    use_api_key: true
+    api_url: "https://api.semanticscholar.org/graph/v1"  # API基础URL
+    fields: "title,authors,year,abstract,url,venue,citationCount,references"  # 返回字段
+    use_api_key: true         # 是否使用API密钥
+    rate_limit:               # 速率限制配置
+      max_requests: 100       # 每小时最大请求数
+      retry_delay: 2          # 初始重试延迟（秒）
+      max_retries: 3          # 最大重试次数
 
   # arXiv配置
   arxiv:
-    sort_by: "relevance"  # relevance, lastUpdatedDate, submittedDate
-    categories: []  # 为空表示所有类别
+    sort_by: "relevance"      # 排序方式：relevance(相关性), lastUpdatedDate(最后更新日期), submittedDate(提交日期)
+    categories: []            # 类别列表，为空表示所有类别
 
   # Google Scholar配置
   google_scholar:
-    proxy: ""  # 可选代理服务器，避免IP被封
-    timeout: 30  # 超时时间（秒）
+    proxy: ""                 # 代理服务器，避免IP被封
+    timeout: 30               # 超时时间（秒）
+
+# ==========================================
+# MCP (Model Context Protocol) 配置
+# ==========================================
+mcp:
+  # 是否启用MCP功能
+  enabled: false
+
+  # 连接类型: stdio 或 sse
+  connection_type: "stdio"
+
+  # MCP服务器路径 (用于stdio连接)
+  server_path: "/usr/local/bin/mcp-server"
+
+  # MCP服务器SSE URL (用于sse连接)
+  sse_url: "http://localhost:8080/api/v1"
+
+  # 重试配置
+  retry:
+    max_attempts: 3           # 最大重试次数
+    initial_delay: 1.0        # 初始重试延迟（秒）
+    max_delay: 10.0           # 最大重试延迟（秒）
+
+  # 超时配置（秒）
+  timeouts:
+    connect: 5.0              # 连接超时
+    read: 30.0                # 读取超时
+    write: 10.0               # 写入超时
+
+  # 日志配置
+  logging:
+    verbose: false            # 是否记录详细日志
+    log_content: false        # 是否记录请求和响应内容
+
+  # 工具配置
+  tools:
+    auto_register: true       # 是否自动注册工具
+    register_timeout: 10.0    # 工具注册超时（秒）
+
+  # 上下文配置
+  contexts:
+    default_timeout: 300.0    # 默认上下文超时（秒）
+    save_history: true        # 是否保存上下文历史
+    history_path: "logs/mcp_history"  # 历史记录保存路径

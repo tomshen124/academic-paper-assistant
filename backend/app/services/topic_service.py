@@ -10,26 +10,38 @@ logger = get_logger("topic_service")
 
 class TopicService:
     """论文主题推荐服务"""
-    
+
     def __init__(self):
         """初始化主题推荐服务"""
         self.llm_service = llm_service
         self.academic_search_service = academic_search_service
         logger.info("主题推荐服务初始化完成")
-    
+
+    def _clean_json_response(self, content: str) -> str:
+        """清理LLM响应中的Markdown代码块标记"""
+        # 移除可能的Markdown代码块标记
+        import re
+        # 匹配```json和```之间的内容
+        json_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', content)
+        if json_block_match:
+            # 返回代码块内的内容
+            return json_block_match.group(1).strip()
+        # 如果没有代码块标记，返回原始内容
+        return content
+
     async def recommend_topics(
-        self, 
-        user_interests: str, 
-        academic_field: str, 
+        self,
+        user_interests: str,
+        academic_field: str,
         academic_level: str = "undergraduate"
     ) -> List[Dict[str, Any]]:
         """推荐论文主题"""
         try:
             logger.info(f"推荐论文主题: 兴趣={user_interests}, 领域={academic_field}, 级别={academic_level}")
-            
+
             # 获取研究趋势
             trends = await self.academic_search_service.get_research_trends(academic_field)
-            
+
             # 构建提示
             system_prompt = f"""你是一个学术论文主题推荐专家。你的任务是为{academic_level}级别的学生推荐合适的论文主题。
 
@@ -74,10 +86,13 @@ class TopicService:
                 max_tokens=2000,
                 temperature=0.7
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -97,27 +112,27 @@ class TopicService:
                         return topics
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回空列表
                 return []
-                
+
         except Exception as e:
             logger.error(f"推荐主题失败: {str(e)}")
             return []
-    
+
     async def analyze_topic_feasibility(
-        self, 
-        topic: str, 
-        academic_field: str, 
+        self,
+        topic: str,
+        academic_field: str,
         academic_level: str = "undergraduate"
     ) -> Dict[str, Any]:
         """分析主题可行性"""
         try:
             logger.info(f"分析主题可行性: 主题={topic}, 领域={academic_field}, 级别={academic_level}")
-            
+
             # 搜索相关文献
             papers = await self.academic_search_service.search_academic_papers(topic, limit=5)
-            
+
             # 构建提示
             system_prompt = f"""你是一个学术论文主题可行性分析专家。你的任务是分析以下论文主题对于{academic_level}级别学生的可行性。
 
@@ -155,10 +170,13 @@ class TopicService:
                 max_tokens=1500,
                 temperature=0.3
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -176,25 +194,25 @@ class TopicService:
                         return result
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回空字典
                 return {}
-                
+
         except Exception as e:
             logger.error(f"分析主题可行性失败: {str(e)}")
             return {}
-    
+
     async def refine_topic(
-        self, 
-        topic: str, 
-        feedback: str, 
-        academic_field: str, 
+        self,
+        topic: str,
+        feedback: str,
+        academic_field: str,
         academic_level: str = "undergraduate"
     ) -> Dict[str, Any]:
         """根据反馈优化主题"""
         try:
             logger.info(f"优化主题: 主题={topic}, 反馈={feedback}")
-            
+
             # 构建提示
             system_prompt = f"""你是一个学术论文主题优化专家。你的任务是根据反馈优化以下论文主题。
 
@@ -221,10 +239,13 @@ class TopicService:
                 max_tokens=1000,
                 temperature=0.5
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
+            # 处理可能的Markdown代码块
+            content = self._clean_json_response(content)
+
             # 尝试解析JSON
             try:
                 result = json.loads(content)
@@ -242,10 +263,10 @@ class TopicService:
                         return result
                     except:
                         pass
-                
+
                 # 如果仍然失败，返回空字典
                 return {}
-                
+
         except Exception as e:
             logger.error(f"优化主题失败: {str(e)}")
             return {}

@@ -4,12 +4,27 @@ import BasicLayout from '@/layouts/BasicLayout.vue'
 import { ElMessage } from 'element-plus'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
+import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
+  // 认证相关路由
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/auth/Login.vue'),
+    meta: { title: '登录', requiresAuth: false }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/auth/Register.vue'),
+    meta: { title: '注册', requiresAuth: false }
+  },
   {
     path: '/',
     component: BasicLayout,
     redirect: '/topics/recommend',
+    meta: { requiresAuth: true },
     children: [
       // 主题相关路由
       {
@@ -183,7 +198,17 @@ router.beforeEach((to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - 学术论文辅助平台` : '学术论文辅助平台'
 
-  next()
+  // 检查是否需要认证
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth !== false)
+  const authStore = useAuthStore()
+
+  // 如果需要认证但没有登录，重定向到登录页
+  if (requiresAuth && !authStore.isLoggedIn()) {
+    ElMessage.warning('请先登录')
+    next({ name: 'Login', query: { redirect: to.fullPath } })
+  } else {
+    next()
+  }
 })
 
 router.afterEach(() => {

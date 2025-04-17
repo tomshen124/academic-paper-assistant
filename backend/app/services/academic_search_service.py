@@ -145,8 +145,16 @@ class AcademicSearchService:
                 sort_by=sort_criterion
             )
 
+            # 使用线程池执行同步操作
+            def get_results():
+                return list(search.results())
+
+            # 使用run_in_executor替代asyncio.to_thread
+            loop = asyncio.get_event_loop()
+            search_results = await loop.run_in_executor(None, get_results)
+
             results = []
-            for result in await asyncio.to_thread(list, search.results()):
+            for result in search_results:
                 # 提取需要的字段
                 paper = {
                     "title": result.title,
@@ -211,13 +219,34 @@ class AcademicSearchService:
 
             # 添加API密钥
             headers = {}
-            if self.semantic_scholar_api_key:
+            if self.semantic_scholar_api_key and self.semantic_scholar_api_key != "your_semantic_scholar_api_key":
                 headers["x-api-key"] = self.semantic_scholar_api_key
+                logger.info("Semantic Scholar API使用API密钥")
+            else:
+                logger.warning("Semantic Scholar API未配置API密钥或使用示例密钥，将使用无密钥访问")
 
-            # 发送请求
-            response = await self.client.get(url, params=params, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+            # 发送请求，带重试和延迟
+            max_retries = 3
+            retry_delay = 2  # 初始延迟秒数
+
+            for retry in range(max_retries):
+                try:
+                    response = await self.client.get(url, params=params, headers=headers)
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        # 如果是429错误，增加更长的延迟
+                        if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 429:
+                            wait_time = retry_delay * (2 ** retry)  # 指数退避
+                            logger.warning(f"Semantic Scholar请求限制，等待{wait_time}秒后重试")
+                            await asyncio.sleep(wait_time)
+                        else:
+                            await asyncio.sleep(retry_delay)
+                    else:
+                        # 最后一次重试也失败，抛出异常
+                        raise
 
             # 处理结果
             results = []
@@ -353,13 +382,34 @@ class AcademicSearchService:
 
                 # 添加API密钥
                 headers = {}
-                if self.semantic_scholar_api_key:
+                if self.semantic_scholar_api_key and self.semantic_scholar_api_key != "your_semantic_scholar_api_key":
                     headers["x-api-key"] = self.semantic_scholar_api_key
+                    logger.info("Semantic Scholar API使用API密钥")
+                else:
+                    logger.warning("Semantic Scholar API未配置API密钥或使用示例密钥，将使用无密钥访问")
 
-                # 发送请求
-                response = await self.client.get(url, params=params, headers=headers)
-                response.raise_for_status()
-                paper = response.json()
+                # 发送请求，带重试和延迟
+                max_retries = 3
+                retry_delay = 2  # 初始延迟秒数
+
+                for retry in range(max_retries):
+                    try:
+                        response = await self.client.get(url, params=params, headers=headers)
+                        response.raise_for_status()
+                        paper = response.json()
+                        break
+                    except Exception as e:
+                        if retry < max_retries - 1:
+                            # 如果是429错误，增加更长的延迟
+                            if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 429:
+                                wait_time = retry_delay * (2 ** retry)  # 指数退避
+                                logger.warning(f"Semantic Scholar请求限制，等待{wait_time}秒后重试")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                await asyncio.sleep(retry_delay)
+                        else:
+                            # 最后一次重试也失败，抛出异常
+                            raise
 
                 return {
                     "title": paper.get("title", ""),
@@ -376,7 +426,14 @@ class AcademicSearchService:
             elif source == "arxiv":
                 # 使用arxiv库获取详情
                 search = arxiv.Search(id_list=[paper_id])
-                result = list(search.results())[0]
+
+                # 使用线程池执行同步操作
+                def get_result():
+                    return list(search.results())[0]
+
+                # 使用run_in_executor执行同步操作
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, get_result)
 
                 return {
                     "title": result.title,

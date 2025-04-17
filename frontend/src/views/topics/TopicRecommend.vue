@@ -7,7 +7,7 @@
           <p>根据您的研究兴趣和学术领域，我们将为您推荐合适的论文主题</p>
         </div>
       </template>
-      
+
       <el-form :model="formData" label-position="top" :rules="rules" ref="formRef">
         <el-form-item label="研究兴趣" prop="user_interests">
           <el-input
@@ -17,26 +17,26 @@
             placeholder="请描述您的研究兴趣，例如：人工智能在医疗诊断中的应用"
           />
         </el-form-item>
-        
+
         <el-form-item label="学术领域" prop="academic_field">
           <el-select v-model="formData.academic_field" placeholder="请选择学术领域" style="width: 100%">
             <el-option v-for="field in academicFields" :key="field" :label="field" :value="field" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="学术级别">
           <el-select v-model="formData.academic_level" placeholder="请选择学术级别" style="width: 100%">
             <el-option v-for="level in academicLevels" :key="level" :label="level" :value="level" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="submitForm">获取推荐主题</el-button>
           <el-button @click="resetForm">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
-    
+
     <el-card v-if="topics.length > 0" class="topic-results-card">
       <template #header>
         <div class="card-header">
@@ -44,7 +44,7 @@
           <p>基于您的兴趣，我们推荐以下研究主题</p>
         </div>
       </template>
-      
+
       <div class="topics-list">
         <el-collapse v-model="activeTopics">
           <el-collapse-item v-for="(topic, index) in topics" :key="index" :name="index">
@@ -54,38 +54,38 @@
                 <h3>{{ topic.title }}</h3>
               </div>
             </template>
-            
+
             <div class="topic-details">
               <div class="topic-detail-item">
                 <h4>研究问题</h4>
                 <p>{{ topic.research_question }}</p>
               </div>
-              
+
               <div class="topic-detail-item">
                 <h4>可行性</h4>
                 <p>{{ topic.feasibility }}</p>
               </div>
-              
+
               <div class="topic-detail-item">
                 <h4>创新点</h4>
                 <p>{{ topic.innovation }}</p>
               </div>
-              
+
               <div class="topic-detail-item">
                 <h4>研究方法</h4>
                 <p>{{ topic.methodology }}</p>
               </div>
-              
+
               <div class="topic-detail-item">
                 <h4>所需资源</h4>
                 <p>{{ topic.resources }}</p>
               </div>
-              
+
               <div class="topic-detail-item">
                 <h4>预期成果</h4>
                 <p>{{ topic.expected_outcomes }}</p>
               </div>
-              
+
               <div class="topic-detail-item">
                 <h4>关键词</h4>
                 <div class="keywords">
@@ -94,7 +94,7 @@
                   </el-tag>
                 </div>
               </div>
-              
+
               <div class="topic-actions">
                 <el-button type="primary" @click="selectTopic(topic)">选择此主题</el-button>
                 <el-button type="success" @click="analyzeFeasibility(topic)">分析可行性</el-button>
@@ -175,7 +175,7 @@ const activeTopics = ref<number[]>([0]); // 默认展开第一个主题
 // 提交表单
 const submitForm = async () => {
   if (!formRef.value) return;
-  
+
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
@@ -205,10 +205,18 @@ const resetForm = () => {
 
 // 选择主题
 const selectTopic = (topic: TopicResponse) => {
-  // 将选中的主题存储到本地存储或状态管理中
-  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+  // 将选中的主题存储到本地存储
+  const topicWithFields = {
+    ...topic,
+    academic_field: formData.academic_field,
+    academic_level: formData.academic_level
+  };
+  localStorage.setItem('selectedTopic', JSON.stringify(topicWithFields));
   ElMessage.success(`已选择主题: ${topic.title}`);
-  
+
+  // 保存到主题历史记录
+  saveTopicToHistory(topicWithFields);
+
   // 导航到提纲生成页面
   router.push({
     name: 'OutlineGenerate',
@@ -216,6 +224,41 @@ const selectTopic = (topic: TopicResponse) => {
       topic: encodeURIComponent(topic.title)
     }
   });
+};
+
+// 将主题保存到历史记录
+const saveTopicToHistory = (topic: TopicResponse & { academic_field?: string, academic_level?: string }) => {
+  // 从本地存储中获取历史记录
+  let topicsHistory: Array<TopicResponse & { id: string }> = [];
+  const historyStr = localStorage.getItem('topicsHistory');
+
+  if (historyStr) {
+    try {
+      topicsHistory = JSON.parse(historyStr);
+    } catch (error) {
+      console.error('解析主题历史记录失败:', error);
+    }
+  }
+
+  // 检查主题是否已存在
+  const exists = topicsHistory.some(t => t.title === topic.title);
+
+  if (!exists) {
+    // 生成唯一ID
+    const id = `topic-${Date.now()}`;
+    topicsHistory.push({
+      ...topic,
+      id
+    });
+
+    // 如果历史记录超过10个，删除最早的
+    if (topicsHistory.length > 10) {
+      topicsHistory.shift();
+    }
+
+    // 保存到本地存储
+    localStorage.setItem('topicsHistory', JSON.stringify(topicsHistory));
+  }
 };
 
 // 分析可行性

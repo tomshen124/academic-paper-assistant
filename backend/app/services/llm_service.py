@@ -41,11 +41,27 @@ class LLMService:
 
         # 设置回退模型
         self.fallback_models = [
-            {"model": "gpt-3.5-turbo"},
-            {"model": settings.DEEPSEEK_MODEL, "api_base": settings.DEEPSEEK_API_URL}
+            {"model": "openai/gpt-3.5-turbo"},
+            {"model": f"deepseek/{settings.DEEPSEEK_MODEL}", "api_base": settings.DEEPSEEK_API_URL}
         ]
 
         logger.info("LLM服务初始化完成")
+
+    # 模型映射字典，将简短模型名称映射到LiteLLM需要的完整格式
+    MODEL_MAPPINGS = {
+        "gpt-3.5-turbo": "openai/gpt-3.5-turbo",
+        "gpt-4": "openai/gpt-4",
+        "deepseek-chat": "deepseek/deepseek-chat",
+        "claude-2": "anthropic/claude-2"
+    }
+
+    def _get_full_model_name(self, model: str) -> str:
+        """获取完整的模型名称，添加提供商前缀"""
+        # 如果模型名称已经包含提供商前缀（包含'/'），则直接返回
+        if '/' in model:
+            return model
+        # 否则从映射中查找
+        return self.MODEL_MAPPINGS.get(model, model)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -67,12 +83,15 @@ class LLMService:
             if model is None:
                 model = settings.DEFAULT_MODEL
 
+            # 获取完整的模型名称（添加提供商前缀）
+            full_model_name = self._get_full_model_name(model)
+
             # 记录请求
             logger.info(f"LLM请求: 模型={model}, 消息数={len(messages)}")
 
             # 调用LLM
             response = await acompletion(
-                model=model,
+                model=full_model_name,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -127,12 +146,15 @@ class LLMService:
             if model is None:
                 model = settings.DEFAULT_MODEL
 
+            # 获取完整的模型名称（添加提供商前缀）
+            full_model_name = self._get_full_model_name(model)
+
             # 记录请求
             logger.info(f"LLM请求: 模型={model}, 消息数={len(messages)}")
 
             # 调用LLM
             response = completion(
-                model=model,
+                model=full_model_name,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,

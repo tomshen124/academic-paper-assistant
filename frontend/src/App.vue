@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import {
   HomeFilled,
   UploadFilled,
@@ -16,6 +17,12 @@ const isCollapse = ref(false)
 const toggleSidebar = () => {
   isCollapse.value = !isCollapse.value
 }
+
+// 初始化认证状态
+const authStore = useAuthStore()
+onMounted(() => {
+  authStore.initUserInfo()
+})
 
 defineExpose({
   activeMenu,
@@ -54,4 +61,4 @@ html, body {
 .fade-leave-to {
   opacity: 0;
 }
-</style> 
+</style>

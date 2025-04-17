@@ -5,7 +5,22 @@ from fastapi.staticfiles import StaticFiles
 from app.api.v1 import api_router
 from app.services.mcp_adapter import mcp_adapter
 from app.core.config import settings
+from app.core.logger import setup_logging
+from app.db.session import SessionLocal
+from app.db.init_db import init_db
 import asyncio
+
+# 初始化日志
+setup_logging()
+
+# 初始化数据库
+db = SessionLocal()
+try:
+    init_db(db)
+except Exception as e:
+    print(f"Error initializing database: {e}")
+finally:
+    db.close()
 
 app = FastAPI(
     title="学术论文辅助平台",

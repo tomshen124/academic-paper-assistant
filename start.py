@@ -42,20 +42,6 @@ def get_project_root():
 def check_requirements():
     print_info("检查必要的工具...")
 
-    # 检查Python
-    try:
-        subprocess.run([sys.executable, "--version"], check=True, capture_output=True)
-    except:
-        print_error(f"未找到Python，请确保Python已安装并在PATH中")
-        sys.exit(1)
-
-    # 检查pip
-    try:
-        subprocess.run([sys.executable, "-m", "pip", "--version"], check=True, capture_output=True)
-    except:
-        print_error("未找到pip，请安装pip")
-        sys.exit(1)
-
     # 检查Node.js
     try:
         subprocess.run(["node", "--version"], check=True, capture_output=True)
@@ -187,11 +173,16 @@ def cleanup(backend_process, frontend_process):
 # 主函数
 def main():
     parser = argparse.ArgumentParser(description="学术论文辅助平台统一启动脚本")
-    parser.add_argument("--venv", help="Python虚拟环境路径，如果不指定则使用系统Python")
+    parser.add_argument("--venv", help="Python虚拟环境路径，如果不指定则使用默认虚拟环境")
     parser.add_argument("--backend-port", type=int, default=8000, help="后端服务端口，默认为8000")
     parser.add_argument("--frontend-port", type=int, default=3000, help="前端服务端口，默认为3000")
     parser.add_argument("--install-deps", action="store_true", help="安装依赖")
+    parser.add_argument("--no-deps", action="store_true", help="不安装依赖，直接启动服务")
     args = parser.parse_args()
+
+    # 如果未指定虚拟环境，使用默认的eduvenv
+    if not args.venv:
+        args.venv = os.path.join(get_project_root(), "eduvenv")
 
     print("==================================================")
     print("       学术论文辅助平台统一启动脚本")
@@ -200,10 +191,14 @@ def main():
     # 检查要求
     check_requirements()
 
-    # 安装依赖
+    # 安装依赖，仅当显式指定--install-deps时才安装
     if args.install_deps:
         install_backend_deps(args.venv)
         install_frontend_deps()
+
+        # 创建标记文件表示依赖已安装
+        with open(os.path.join(get_project_root(), "backend", ".deps_installed"), "w") as f:
+            f.write("Dependencies installed on " + time.strftime("%Y-%m-%d %H:%M:%S"))
 
     # 启动服务
     backend_process = start_backend(args.venv, args.backend_port)

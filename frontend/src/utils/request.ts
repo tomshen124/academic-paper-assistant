@@ -11,7 +11,11 @@ const service: AxiosInstance = axios.create({
 // 请求拦截器
 service.interceptors.request.use(
   (config) => {
-    // 在这里可以添加token等认证信息
+    // 添加token认证信息
+    const token = localStorage.getItem('token')
+    if (token && config.headers) {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
     return config
   },
   (error) => {
@@ -23,19 +27,30 @@ service.interceptors.request.use(
 // 响应拦截器
 service.interceptors.response.use(
   (response: AxiosResponse) => {
-    const res = response.data
-    return res
+    return response
   },
   (error) => {
     console.error('响应错误:', error)
+
+    // 处理401认证错误
+    if (error.response?.status === 401) {
+      ElMessage.error('登录已过期，请重新登录')
+      localStorage.removeItem('token')
+      localStorage.removeItem('userInfo')
+      // 跳转到登录页
+      window.location.href = '/login'
+      return Promise.reject(error)
+    }
+
+    // 处理其他错误
     ElMessage.error(error.response?.data?.detail || '请求失败')
     return Promise.reject(error)
   }
 )
 
 // 封装请求方法
-const request = <T = any>(config: AxiosRequestConfig): Promise<T> => {
-  return service(config) as unknown as Promise<T>;
+const request = <T = any>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> => {
+  return service(config) as unknown as Promise<AxiosResponse<T>>;
 };
 
 export default request

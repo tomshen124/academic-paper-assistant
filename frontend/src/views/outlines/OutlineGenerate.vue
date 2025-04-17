@@ -7,39 +7,60 @@
           <p>根据您的主题和要求，我们将为您生成详细的论文提纲</p>
         </div>
       </template>
-      
+
       <el-form :model="formData" label-position="top" :rules="rules" ref="formRef">
+        <el-form-item label="选择已有主题">
+          <el-select
+            v-model="selectedTopicId"
+            placeholder="选择已有主题"
+            style="width: 100%"
+            @change="handleTopicChange"
+            clearable
+          >
+            <el-option
+              v-for="topic in savedTopics"
+              :key="topic.id"
+              :label="topic.title"
+              :value="topic.id"
+            />
+          </el-select>
+          <div class="topic-actions" v-if="selectedTopicId">
+            <el-button type="text" @click="goToTopicRecommend">生成新主题</el-button>
+            <el-button type="text" @click="clearSelectedTopic">清除选择</el-button>
+          </div>
+        </el-form-item>
+
         <el-form-item label="论文主题" prop="topic">
           <el-input
             v-model="formData.topic"
             placeholder="请输入论文主题"
           />
         </el-form-item>
-        
+
         <el-form-item label="论文类型" prop="paper_type">
           <el-select v-model="formData.paper_type" placeholder="请选择论文类型" style="width: 100%">
             <el-option v-for="type in paperTypes" :key="type" :label="type" :value="type" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="学术领域" prop="academic_field">
           <el-select v-model="formData.academic_field" placeholder="请选择学术领域" style="width: 100%">
             <el-option v-for="field in academicFields" :key="field" :label="field" :value="field" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="学术级别">
           <el-select v-model="formData.academic_level" placeholder="请选择学术级别" style="width: 100%">
             <el-option v-for="level in academicLevels" :key="level" :label="level" :value="level" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="预期长度">
           <el-select v-model="formData.length" placeholder="请选择预期长度" style="width: 100%">
             <el-option v-for="length in paperLengths" :key="length" :label="length" :value="length" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="submitForm">生成提纲</el-button>
           <el-button @click="resetForm">重置</el-button>
@@ -47,7 +68,7 @@
         </el-form-item>
       </el-form>
     </el-card>
-    
+
     <el-card v-if="outline" class="outline-result-card">
       <template #header>
         <div class="card-header">
@@ -62,16 +83,16 @@
           </div>
         </div>
       </template>
-      
+
       <div class="outline-content">
         <div class="abstract-section">
           <h3>摘要</h3>
           <p>{{ outline.abstract }}</p>
         </div>
-        
+
         <div class="sections-container">
           <h3>论文结构</h3>
-          
+
           <el-tree
             :data="formatSections(outline.sections)"
             :props="defaultProps"
@@ -111,7 +132,7 @@
           </el-tree>
         </div>
       </div>
-      
+
       <div class="outline-actions">
         <el-button type="primary" @click="useOutline">使用此提纲</el-button>
         <el-button type="success" @click="optimizeOutline">优化提纲</el-button>
@@ -119,7 +140,7 @@
         <el-button type="warning" @click="generatePaper">生成论文</el-button>
       </div>
     </el-card>
-    
+
     <el-dialog
       v-model="templatesDialogVisible"
       title="提纲模板"
@@ -134,18 +155,18 @@
                 <span class="template-suitable">适用于: {{ template.suitable_for }}</span>
               </div>
             </template>
-            
+
             <div class="template-details">
               <h4>结构</h4>
               <ul class="template-structure">
                 <li v-for="(item, i) in template.structure" :key="i">{{ item.title }}</li>
               </ul>
-              
+
               <h4>特点</h4>
               <ul class="template-features">
                 <li v-for="(feature, i) in template.features" :key="i">{{ feature }}</li>
               </ul>
-              
+
               <el-button type="primary" @click="applyTemplate(template)">应用此模板</el-button>
             </div>
           </el-collapse-item>
@@ -159,13 +180,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { ElMessage, FormInstance } from 'element-plus';
+import { ref, reactive, onMounted, watch } from 'vue';
+import { ElMessage, FormInstance, ElMessageBox } from 'element-plus';
 import { useRouter, useRoute } from 'vue-router';
 import { InfoFilled } from '@element-plus/icons-vue';
 import { generateOutline, getOutlineTemplates } from '@/api/modules/outlines';
 import type { OutlineRequest, OutlineResponse, OutlineTemplate } from '@/types/outlines';
 import type { Section, SubSection } from '@/types/outlines';
+import type { TopicResponse } from '@/types/topics';
 
 const router = useRouter();
 const route = useRoute();
@@ -255,6 +277,10 @@ const templates = ref<OutlineTemplate[]>([]);
 const templatesDialogVisible = ref(false);
 const activeTemplate = ref<number[]>([0]);
 
+// 选题相关状态
+const savedTopics = ref<Array<TopicResponse & { id: string }>>([]);
+const selectedTopicId = ref<string>('');
+
 // 树形控件配置
 const defaultProps = {
   children: 'children',
@@ -271,7 +297,7 @@ const formatSections = (sections: Section[]) => {
       content_points: section.content_points,
       expected_length: section.expected_length
     };
-    
+
     if (section.subsections && section.subsections.length > 0) {
       result.children = section.subsections.map((subsection: SubSection) => ({
         id: `${section.id}-${subsection.id}`,
@@ -281,34 +307,143 @@ const formatSections = (sections: Section[]) => {
         expected_length: subsection.expected_length
       }));
     }
-    
+
     return result;
   });
 };
 
 // 从路由参数中获取主题
 onMounted(() => {
+  // 加载保存的所有选题
+  loadSavedTopics();
+
   const topicParam = route.params.topic;
   if (topicParam) {
     formData.topic = decodeURIComponent(topicParam as string);
   }
-  
+
   // 从本地存储中获取选中的主题
   const selectedTopic = localStorage.getItem('selectedTopic');
   if (selectedTopic) {
     try {
       const topic = JSON.parse(selectedTopic);
       formData.topic = topic.title;
+      formData.academic_field = topic.academic_field || formData.academic_field;
+      formData.academic_level = topic.academic_level || formData.academic_level;
+
+      // 如果该主题已经在保存的主题列表中，选中它
+      const existingTopic = savedTopics.value.find(t => t.title === topic.title);
+      if (existingTopic) {
+        selectedTopicId.value = existingTopic.id;
+      }
     } catch (error) {
       console.error('解析选中主题失败:', error);
     }
   }
 });
 
+// 加载保存的所有选题
+const loadSavedTopics = () => {
+  const topicsHistory = localStorage.getItem('topicsHistory');
+  if (topicsHistory) {
+    try {
+      savedTopics.value = JSON.parse(topicsHistory);
+    } catch (error) {
+      console.error('解析选题历史失败:', error);
+      savedTopics.value = [];
+    }
+  } else {
+    savedTopics.value = [];
+  }
+
+  // 如果有选中的主题但不在历史中，添加到历史
+  const selectedTopic = localStorage.getItem('selectedTopic');
+  if (selectedTopic) {
+    try {
+      const topic = JSON.parse(selectedTopic);
+      const exists = savedTopics.value.some(t => t.title === topic.title);
+
+      if (!exists) {
+        // 生成唯一ID
+        const id = `topic-${Date.now()}`;
+        savedTopics.value.push({
+          ...topic,
+          id
+        });
+
+        // 保存到本地存储
+        localStorage.setItem('topicsHistory', JSON.stringify(savedTopics.value));
+      }
+    } catch (error) {
+      console.error('处理选中主题失败:', error);
+    }
+  }
+};
+
+// 处理选题变化
+const handleTopicChange = (topicId: string) => {
+  if (!topicId) {
+    return;
+  }
+
+  const selectedTopic = savedTopics.value.find(t => t.id === topicId);
+  if (selectedTopic) {
+    // 如果已经有提纲且主题不同，则提示用户
+    if (outline.value && formData.topic !== selectedTopic.title) {
+      ElMessageBox.confirm(
+        '更换主题将清除当前提纲，是否继续？',
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }
+      ).then(() => {
+        // 更新表单数据
+        updateFormWithTopic(selectedTopic);
+        // 清除提纲
+        outline.value = null;
+      }).catch(() => {
+        // 恢复选择
+        selectedTopicId.value = '';
+      });
+    } else {
+      // 直接更新表单
+      updateFormWithTopic(selectedTopic);
+    }
+  }
+};
+
+// 使用选中的主题更新表单
+const updateFormWithTopic = (topic: TopicResponse & { id: string }) => {
+  formData.topic = topic.title;
+  if (topic.academic_field) {
+    formData.academic_field = topic.academic_field;
+  }
+  if (topic.academic_level) {
+    formData.academic_level = topic.academic_level;
+  }
+
+  // 将选中的主题保存到本地存储
+  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+  ElMessage.success(`已选择主题: ${topic.title}`);
+};
+
+// 清除选中的主题
+const clearSelectedTopic = () => {
+  selectedTopicId.value = '';
+  // 不清除表单中的主题，只清除选择
+};
+
+// 前往主题推荐页面
+const goToTopicRecommend = () => {
+  router.push({ name: 'TopicRecommend' });
+};
+
 // 提交表单
 const submitForm = async () => {
   if (!formRef.value) return;
-  
+
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
@@ -340,7 +475,7 @@ const getTemplates = async () => {
     ElMessage.warning('请先选择论文类型和学术领域');
     return;
   }
-  
+
   try {
     loading.value = true;
     const result = await getOutlineTemplates({
@@ -349,7 +484,7 @@ const getTemplates = async () => {
     });
     templates.value = result;
     templatesDialogVisible.value = true;
-    
+
     if (templates.value.length === 0) {
       ElMessage.info('暂无匹配的提纲模板');
     }
@@ -366,7 +501,7 @@ const applyTemplate = (template: OutlineTemplate) => {
   // 将模板应用到表单
   templatesDialogVisible.value = false;
   ElMessage.success(`已应用模板: ${template.name}`);
-  
+
   // 重新生成提纲
   submitForm();
 };
@@ -374,11 +509,11 @@ const applyTemplate = (template: OutlineTemplate) => {
 // 使用提纲
 const useOutline = () => {
   if (!outline.value) return;
-  
+
   // 将提纲存储到本地存储或状态管理中
   localStorage.setItem('selectedOutline', JSON.stringify(outline.value));
   ElMessage.success('已选择此提纲');
-  
+
   // 导航到论文生成页面
   router.push({
     name: 'PaperGenerate'
@@ -388,7 +523,7 @@ const useOutline = () => {
 // 优化提纲
 const optimizeOutline = () => {
   if (!outline.value) return;
-  
+
   router.push({
     name: 'OutlineOptimize',
     params: {
@@ -400,7 +535,7 @@ const optimizeOutline = () => {
 // 验证提纲
 const validateOutline = () => {
   if (!outline.value) return;
-  
+
   router.push({
     name: 'OutlineValidate',
     params: {
@@ -412,7 +547,7 @@ const validateOutline = () => {
 // 生成论文
 const generatePaper = () => {
   if (!outline.value) return;
-  
+
   router.push({
     name: 'PaperGenerate'
   });
@@ -428,6 +563,12 @@ const generatePaper = () => {
 
 .outline-form-card {
   margin-bottom: 30px;
+}
+
+.topic-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
 }
 
 .card-header {
