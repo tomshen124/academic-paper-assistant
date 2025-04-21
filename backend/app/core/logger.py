@@ -46,10 +46,10 @@ def setup_logging():
 
     # 添加文件输出
     logger.add(
-        LOG_PATH / "app.log",
+        LOG_PATH / "app_{time:YYYY-MM-DD}.log",
         format=LOG_FORMAT,
         level=settings.LOG_LEVEL,
-        rotation="10 MB",
+        rotation="1 MB",  # 降低切分阈值
         retention="30 days",
         compression="zip",
         encoding="utf-8"
@@ -57,10 +57,10 @@ def setup_logging():
 
     # 添加错误日志
     logger.add(
-        LOG_PATH / "error.log",
+        LOG_PATH / "error_{time:YYYY-MM-DD}.log",
         format=LOG_FORMAT,
         level="ERROR",
-        rotation="10 MB",
+        rotation="1 MB",  # 降低切分阈值
         retention="30 days",
         compression="zip",
         encoding="utf-8"
@@ -68,14 +68,38 @@ def setup_logging():
 
     # 添加LLM调用日志
     logger.add(
-        LOG_PATH / "llm.log",
+        LOG_PATH / "llm_{time:YYYY-MM-DD}.log",
         format=LOG_FORMAT,
         level="INFO",
-        rotation="10 MB",
+        rotation="1 MB",  # 降低切分阈值
         retention="30 days",
         compression="zip",
         encoding="utf-8",
         filter=lambda record: "llm" in record["extra"]
+    )
+
+    # 添加API请求日志
+    logger.add(
+        LOG_PATH / "api_{time:YYYY-MM-DD}.log",
+        format=LOG_FORMAT,
+        level="INFO",
+        rotation="1 MB",  # 降低切分阈值
+        retention="30 days",
+        compression="zip",
+        encoding="utf-8",
+        filter=lambda record: "api" in record["extra"]
+    )
+
+    # 添加用户操作日志
+    logger.add(
+        LOG_PATH / "user_activity_{time:YYYY-MM-DD}.log",
+        format=LOG_FORMAT,
+        level="INFO",
+        rotation="1 MB",  # 降低切分阈值
+        retention="30 days",
+        compression="zip",
+        encoding="utf-8",
+        filter=lambda record: "user_activity" in record["extra"]
     )
 
     # 拦截所有标准库日志
@@ -95,3 +119,13 @@ def get_logger(name):
 def get_llm_logger(name):
     """获取LLM日志器"""
     return logger.bind(name=name, llm=True)
+
+# 创建API日志器
+def get_api_logger(name):
+    """获取API日志器"""
+    return logger.bind(name=name, api=True)
+
+# 创建用户活动日志器
+def get_user_activity_logger(name):
+    """获取用户活动日志器"""
+    return logger.bind(name=name, user_activity=True)

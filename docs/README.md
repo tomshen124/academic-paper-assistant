@@ -288,12 +288,27 @@ backend/
    - 在 `llm_service.py` 中添加新模型支持
    - 更新 `config.py` 中的配置选项
 
+## 文档列表
+
+- [architecture.md](architecture.md) - 系统架构文档
+- [database_design.md](database_design.md) - 数据库设计文档
+- [data_storage.md](data_storage.md) - 数据存储架构文档
+- [implementation_status.md](implementation_status.md) - 实现状态文档
+- [api.md](api.md) - API文档
+- [litellm_service.md](litellm_service.md) - LiteLLM服务文档
+- [user_guide.md](user_guide.md) - 用户指南
+- [translation_service.md](translation_service.md) - 翻译服务文档
+- [translation_guide.md](translation_guide.md) - 翻译功能使用指南
+- [api_optimization.md](api_optimization.md) - API优化文档
+- [api_optimization_guide.md](api_optimization_guide.md) - API优化实现与使用指南
+- [logging_system.md](logging_system.md) - 日志系统文档
+
 ## 未来计划
 
-1. **数据库集成**
-   - 用户项目管理
-   - 历史记录保存
-   - 用户偏好设置
+1. **数据存储优化**
+   - 智能体记忆持久化
+   - 配置管理优化
+   - 缓存策略优化
 
 2. **前端开发**
    - 交互式编辑界面

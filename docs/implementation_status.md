@@ -109,6 +109,9 @@
    - 学术搜索服务实现完成，支持多种搜索源和参数配置
    - 多智能体协作框架实现完成
    - Token管理服务实现完成，支持记录和统计用户的Token使用情况
+   - 数据存储架构实现完成，包括数据库存储、Redis缓存和内存存储的合理分层
+   - 翻译服务实现完成，支持将英文学术内容翻译成中文
+   - 缓存服务实现完成，支持对API请求结果进行缓存，减少重复请求
 
 3. **API端点**
    - 主题相关API实现完成
@@ -119,6 +122,7 @@
    - 智能体相关API实现完成
    - 用户认证API实现完成，支持注册、登录和用户信息管理
    - Token使用记录API实现完成，支持查询和统计Token使用情况
+   - 翻译API实现完成，支持内容翻译和批量翻译
 
 4. **配置系统**
    - 集中化配置管理实现完成
@@ -153,9 +157,10 @@
 
 ### 待实现功能
 
-1. **数据迁移**
-   - 将本地存储的数据迁移到数据库
-   - 历史记录管理优化
+1. **数据存储优化**
+   - 智能体记忆持久化
+   - 配置管理优化
+   - 缓存策略优化
 
 2. **用户管理功能完善**
    - 用户个人资料管理
@@ -323,6 +328,7 @@ edu-kg/
 │   │   │       │   ├── search.py
 │   │   │       │   ├── agents.py
 │   │   │       │   ├── tokens.py
+│   │   │       │   ├── translation.py
 │   │   │       │   └── mcp.py
 │   │   │       └── __init__.py
 │   │   ├── core/
@@ -362,6 +368,7 @@ edu-kg/
 │   │   │   ├── search.py
 │   │   │   ├── agents.py
 │   │   │   ├── token.py
+│   │   │   ├── translation.py
 │   │   │   └── mcp.py
 │   │   ├── services/
 │   │   │   ├── llm_service.py
@@ -372,6 +379,8 @@ edu-kg/
 │   │   │   ├── academic_search_service.py
 │   │   │   ├── agent_service.py
 │   │   │   ├── statistics_service.py
+│   │   │   ├── translation_service.py
+│   │   │   ├── cache_service.py
 │   │   │   ├── mcp_client.py
 │   │   │   └── mcp_adapter.py
 │   │   └── main.py
@@ -414,6 +423,7 @@ edu-kg/
 │   │   │   ├── citations.ts
 │   │   │   ├── search.ts
 │   │   │   ├── agents.ts
+│   │   │   ├── translation.ts
 │   │   │   └── mcp.ts
 │   │   └── App.vue
 │   ├── package.json
@@ -436,16 +446,22 @@ edu-kg/
    - 优化LLM服务多模型配置，提高对不同模型的兼容性
    - 优化多智能体协作流程
    - 增强学术搜索功能
+   - 完善翻译功能，支持更多语言对
+   - 将内存缓存升级为持久化缓存（如Redis）
 
 2. **中期计划**
    - 完善前端与数据库的集成
    - 完善用户管理功能
    - 增加更多学术数据源
+   - 实现专业术语库，提高翻译准确性
+   - 实现分布式限流机制，在多实例环境中协调API请求
 
 3. **长期计划**
    - 支持更多语言和学科
    - 集成更多MCP生态工具
    - 开发高级分析功能
+   - 集成中文学术资源API（如百度学术、万方数据等）
+   - 实现智能翻译记忆功能，避免重复翻译相同内容
 
 ## 统一启动脚本
 
@@ -475,22 +491,54 @@ edu-kg/
 
 ## 日志系统
 
-项目实现了完善的日志系统，使用 loguru 库进行日志管理，支持多种日志级别和输出目标。
+项目实现了完善的日志系统，使用 loguru 库进行日志管理，支持多种日志级别和输出目标。日志系统支持自动切分和压缩，确保日志文件不会无限增长。
 
 ### 日志类型
 
-- **应用日志**（`logs/app.log`）：记录应用的一般信息和操作
-- **错误日志**（`logs/error.log`）：只记录错误级别的日志
-- **LLM 调用日志**（`logs/llm.log`）：记录 LLM 调用相关的信息
+- **应用日志**（`logs/app_{time:YYYY-MM-DD}.log`）：记录应用的一般信息和操作，按日期切分
+- **错误日志**（`logs/error_{time:YYYY-MM-DD}.log`）：只记录错误级别的日志，按日期切分
+- **LLM 调用日志**（`logs/llm_{time:YYYY-MM-DD}.log`）：记录 LLM 调用相关的信息，按日期切分
+- **API 请求日志**（`logs/api_{time:YYYY-MM-DD}.log`）：记录 API 请求相关的信息，按日期切分
+- **用户活动日志**（`logs/user_activity_{time:YYYY-MM-DD}.log`）：记录用户活动相关的信息，按日期切分
 
 ### 日志配置
 
-日志配置在 `default.yaml` 文件的 `logging` 部分进行设置，支持以下配置项：
+日志配置在 `backend/app/core/logger.py` 文件中进行设置，支持以下配置项：
 
-- 日志级别（INFO、DEBUG、WARNING 等）
-- 日志格式
-- 日志文件路径
-- 日志文件大小和备份数量
+- **日志级别**：支持 INFO、DEBUG、WARNING 等级别，可在 `config/default.yaml` 文件中配置
+- **日志格式**：可自定义日志格式，包括时间、级别、模块、函数、行号等信息
+- **日志文件路径**：默认存储在项目根目录的 `logs` 目录中
+- **日志切分**：支持按日期和文件大小切分，默认当日志文件超过 1MB 时自动切分
+- **日志保留**：默认保留 30 天的日志文件，超过时间的日志文件会被自动删除
+- **日志压缩**：支持将日志文件压缩为 zip 格式，减少磁盘空间占用
+
+### 日志分类和过滤
+
+日志系统支持根据不同的标签将日志分类到不同的文件中：
+
+- **LLM 日志**：使用 `get_llm_logger` 函数创建的日志器会将日志写入 LLM 日志文件
+- **API 日志**：使用 `get_api_logger` 函数创建的日志器会将日志写入 API 日志文件
+- **用户活动日志**：使用 `get_user_activity_logger` 函数创建的日志器会将日志写入用户活动日志文件
+
+### 日志使用示例
+
+```python
+# 获取一般日志器
+from app.core.logger import get_logger
+logger = get_logger("my_module")
+logger.info("This is an info message")
+logger.error("This is an error message")
+
+# 获取 LLM 日志器
+from app.core.logger import get_llm_logger
+llm_logger = get_llm_logger("llm_service")
+llm_logger.info("LLM request: {}", request_data)
+
+# 获取 API 日志器
+from app.core.logger import get_api_logger
+api_logger = get_api_logger("api_endpoint")
+api_logger.info("API request: {}", request.url)
+```
 
 ## 结论
 
@@ -498,4 +546,6 @@ edu-kg/
 
 项目已经实现了统一启动脚本和完善的日志系统，简化了开发和部署过程，提高了系统的可维护性和可靠性。学术搜索功能的增强使用户可以更灵活地配置搜索源和参数，获得更精确的搜索结果。
 
-MCP集成的预留为未来扩展提供了可能性，使平台能够轻松地利用MCP服务器生态中的工具和功能来增强其能力。
+新增的翻译功能使平台能够支持将英文学术内容翻译成中文，大大提高了对中文用户的友好性。通过使用大型语言模型进行翻译，确保了学术术语的准确性和翻译质量。同时，实现的缓存服务和学术 API 请求优化显著提高了系统的性能和稳定性，解决了 API 限流问题，减少了重复请求。
+
+MCP集成的预留为未来扩展提供了可能性，使平台能够轻松地利用MCP服务器生态中的工具和功能来增强其能力。随着翻译功能和缓存服务的加入，平台向着更加国际化和高性能的方向发展，为用户提供更加全面和高效的学术论文辅助服务。
