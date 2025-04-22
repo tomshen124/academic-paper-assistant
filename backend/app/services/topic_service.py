@@ -1,9 +1,11 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 import asyncio
 import json
 from app.core.logger import get_logger
 from app.services.llm_service import llm_service
 from app.services.academic_search_service import academic_search_service
+from app.services.interest_analysis_service import interest_analysis_service
+from app.utils.json_utils import safe_dumps
 
 # 创建日志器
 logger = get_logger("topic_service")
@@ -472,6 +474,210 @@ class TopicService:
         except Exception as e:
             logger.error(f"分析主题可行性失败: {str(e)}")
             return {}
+
+    async def analyze_interests_streaming(
+        self,
+        user_interests: str,
+        academic_field: str,
+        academic_level: str = "undergraduate"
+    ) -> Dict[str, Any]:
+        """流式分析用户兴趣"""
+        try:
+            logger.info(f"流式分析用户兴趣: 兴趣={user_interests}, 领域={academic_field}, 级别={academic_level}")
+
+            # 调用兴趣分析服务
+            analysis_result = await interest_analysis_service.analyze_interests(
+                user_interests=user_interests,
+                academic_field=academic_field,
+                academic_level=academic_level
+            )
+
+            logger.info(f"兴趣分析完成: {json.dumps(analysis_result, ensure_ascii=False)[:100]}...")
+            return analysis_result
+
+        except Exception as e:
+            logger.error(f"流式分析用户兴趣失败: {str(e)}")
+            # 返回空字典
+            return {}
+
+    async def recommend_topics_streaming(
+        self,
+        user_interests: str,
+        academic_field: str,
+        academic_level: str = "undergraduate",
+        topic_count: int = 3,
+        interest_analysis: Dict[str, Any] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式推荐论文主题，返回一个异步生成器"""
+        try:
+            logger.info(f"流式推荐论文主题: 兴趣={user_interests}, 领域={academic_field}, 级别={academic_level}")
+
+            # 构建提示
+            interest_analysis_text = ""
+            if interest_analysis:
+                # 如果有兴趣分析结果，将其添加到提示中
+                interest_analysis_text = f"""
+兴趣分析结果:
+- 关键概念: {safe_dumps(interest_analysis.get('key_concepts', []), ensure_ascii=False)}
+- 研究方向: {safe_dumps(interest_analysis.get('research_directions', []), ensure_ascii=False)}
+- 相关领域: {safe_dumps(interest_analysis.get('related_fields', []), ensure_ascii=False)}
+- 研究趋势: {safe_dumps(interest_analysis.get('research_trends', []), ensure_ascii=False)}
+- 建议关键词: {safe_dumps(interest_analysis.get('suggested_keywords', []), ensure_ascii=False)}
+"""
+
+            # 获取研究趋势
+            try:
+                trends = await self.academic_search_service.get_research_trends(academic_field)
+                # 使用安全序列化函数
+                trends_json = safe_dumps(trends, ensure_ascii=False, default_value="[]")
+                logger.info(f"成功获取研究趋势并序列化")
+            except Exception as e:
+                logger.error(f"获取研究趋势失败: {str(e)}")
+                trends = []
+                trends_json = "[]"
+
+            system_prompt = f"""你是一个学术论文主题推荐专家。你的任务是为{academic_level}级别的学生推荐合适的论文主题。
+
+请基于以下信息推荐{topic_count}个具体的论文主题：
+1. 学生兴趣: {user_interests}
+2. 学术领域: {academic_field}
+3. 学术级别: {academic_level}
+4. 当前研究趋势: {trends_json}
+{interest_analysis_text}
+
+对于每个推荐的主题，请提供以下信息：
+1. 主题标题：具体且有研究价值的标题
+2. 研究问题：该主题要解决的核心问题
+3. 可行性：该主题对于{academic_level}级别学生的可行性评估（高/中/低）
+4. 创新点：该主题的创新之处
+5. 研究方法：建议采用的研究方法
+6. 所需资源：完成该研究所需的主要资源
+7. 预期成果：预期能够得出的结论或成果
+8. 关键词：5-8个相关关键词
+
+请一次生成一个主题，并以JSON格式返回结果，格式如下：
+{{
+  "title": "主题标题",
+  "research_question": "研究问题",
+  "feasibility": "可行性",
+  "innovation": "创新点",
+  "methodology": "研究方法",
+  "resources": "所需资源",
+  "expected_outcomes": "预期成果",
+  "keywords": ["关键词1", "关键词2", ...]
+}}
+
+注意：
+1. 请确保你的推荐是具体的、可行的，并且与学生的兴趣和学术水平相匹配。
+2. 请保持每个字段的描述简洁明确，不要超过100个字符。
+3. 请仅返回JSON格式的内容，不要添加其他解释或标记。
+4. 请一次只生成一个主题，我会多次调用你来获取多个主题。"""
+
+            # 使用流式LLM调用
+            for i in range(topic_count):
+                logger.info(f"生成第 {i+1} 个主题")
+
+                # 构建消息
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"请生成第 {i+1} 个主题"}
+                ]
+
+                # 调用LLM
+                response = await self.llm_service.acompletion(
+                    messages=messages,
+                    max_tokens=1000,
+                    temperature=0.7
+                )
+
+                # 解析响应
+                content = response.choices[0].message.content
+
+                # 记录原始响应以便调试
+                logger.info(f"原始 LLM 响应(主题 {i+1}): {content[:200]}...")
+
+                # 处理可能的Markdown代码块
+                cleaned_content = self._clean_json_response(content)
+
+                try:
+                    # 解析JSON
+                    topic = json.loads(cleaned_content)
+
+                    # 验证主题
+                    if 'title' not in topic:
+                        logger.warning(f"主题缺少title字段: {topic}")
+                        continue
+
+                    # 补充缺失的字段
+                    validated_topic = {
+                        'title': topic.get('title', ''),
+                        'research_question': topic.get('research_question', ''),
+                        'feasibility': topic.get('feasibility', ''),
+                        'innovation': topic.get('innovation', ''),
+                        'methodology': topic.get('methodology', ''),
+                        'resources': topic.get('resources', ''),
+                        'expected_outcomes': topic.get('expected_outcomes', ''),
+                        'keywords': topic.get('keywords', [])
+                    }
+
+                    # 返回验证后的主题
+                    yield validated_topic
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"无法解析LLM响应为JSON: {str(e)}")
+                    # 尝试修复可能的JSON格式问题
+                    try:
+                        fixed_content = cleaned_content.replace("''", '"').replace("'", '"')
+                        topic = json.loads(fixed_content)
+
+                        # 验证主题
+                        if 'title' not in topic:
+                            logger.warning(f"主题缺少title字段: {topic}")
+                            continue
+
+                        # 补充缺失的字段
+                        validated_topic = {
+                            'title': topic.get('title', ''),
+                            'research_question': topic.get('research_question', ''),
+                            'feasibility': topic.get('feasibility', ''),
+                            'innovation': topic.get('innovation', ''),
+                            'methodology': topic.get('methodology', ''),
+                            'resources': topic.get('resources', ''),
+                            'expected_outcomes': topic.get('expected_outcomes', ''),
+                            'keywords': topic.get('keywords', [])
+                        }
+
+                        # 返回验证后的主题
+                        yield validated_topic
+                    except Exception as e:
+                        logger.error(f"修复主题JSON失败: {str(e)}")
+                        # 生成一个简单的默认主题
+                        default_topic = {
+                            'title': f"主题 {i+1} - 基于{academic_field}的{user_interests}研究",
+                            'research_question': f"如何在{academic_field}领域应用{user_interests}?",
+                            'feasibility': "中等",
+                            'innovation': "将现有研究应用于新领域",
+                            'methodology': "文献综述与案例分析",
+                            'resources': "学术文献和网络资源",
+                            'expected_outcomes': "提出新的应用框架或方法",
+                            'keywords': [user_interests, academic_field]
+                        }
+                        yield default_topic
+
+        except Exception as e:
+            logger.error(f"流式推荐主题失败: {str(e)}")
+            # 生成一个错误主题
+            error_topic = {
+                'title': f"生成主题时出错",
+                'research_question': "无法生成研究问题",
+                'feasibility': "未知",
+                'innovation': "未知",
+                'methodology': "未知",
+                'resources': "未知",
+                'expected_outcomes': "未知",
+                'keywords': []
+            }
+            yield error_topic
 
     async def refine_topic(
         self,

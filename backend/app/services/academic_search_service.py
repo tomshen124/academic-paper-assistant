@@ -1,10 +1,13 @@
 from typing import List, Dict, Any, Optional
 import asyncio
 import httpx
+import time
+import random
 from scholarly import scholarly
 import arxiv
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.services.cache_service import cache_service
 
 # 创建日志器
 logger = get_logger("academic_search")
@@ -114,6 +117,7 @@ class AcademicSearchService:
             logger.error(f"Google Scholar搜索失败: {str(e)}")
             return []
 
+    @cache_service.cached(prefix="arxiv_search", ttl=3600)  # 缓存一小时
     async def search_arxiv(self, query: str, limit: int = 10, sort_by: str = "relevance", categories: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """搜索arXiv"""
         try:
@@ -147,25 +151,62 @@ class AcademicSearchService:
 
             # 使用线程池执行同步操作
             def get_results():
-                return list(search.results())
+                try:
+                    # 添加随机延迟，避免多个请求同时发送
+                    time.sleep(random.uniform(0.5, 2.0))
+                    return list(search.results())
+                except Exception as e:
+                    logger.error(f"arXiv获取结果失败: {str(e)}")
+                    return []
 
             # 使用run_in_executor替代asyncio.to_thread
-            loop = asyncio.get_event_loop()
-            search_results = await loop.run_in_executor(None, get_results)
+            max_retries = 3
+            base_delay = 2
+
+            for retry in range(max_retries):
+                try:
+                    if retry > 0:
+                        # 重试前等待
+                        wait_time = base_delay * (1.5 ** retry) + random.uniform(0, 1)
+                        logger.info(f"arXiv请求前等待 {wait_time:.2f} 秒")
+                        await asyncio.sleep(wait_time)
+
+                    loop = asyncio.get_event_loop()
+                    search_results = await loop.run_in_executor(None, get_results)
+
+                    if search_results:  # 如果有结果，跳出重试循环
+                        break
+                    elif retry < max_retries - 1:  # 如果没有结果但还有重试机会
+                        logger.warning(f"arXiv搜索返回空结果，将重试 ({retry+1}/{max_retries})")
+                    else:
+                        logger.warning(f"arXiv搜索所有重试均返回空结果")
+                except Exception as e:
+                    logger.error(f"arXiv搜索异常: {str(e)}")
+                    if retry < max_retries - 1:
+                        wait_time = base_delay * (1.5 ** retry) + random.uniform(0, 1)
+                        logger.warning(f"等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.error(f"arXiv搜索失败，所有重试均失败")
+                        return []
 
             results = []
             for result in search_results:
-                # 提取需要的字段
-                paper = {
-                    "title": result.title,
-                    "authors": [author.name for author in result.authors],
-                    "year": result.published.year if hasattr(result, "published") else "",
-                    "abstract": result.summary,
-                    "url": result.pdf_url,
-                    "categories": result.categories,
-                    "source": "arxiv"
-                }
-                results.append(paper)
+                try:
+                    # 提取需要的字段
+                    paper = {
+                        "title": result.title,
+                        "authors": [author.name for author in result.authors],
+                        "year": result.published.year if hasattr(result, "published") else "",
+                        "abstract": result.summary,
+                        "url": result.pdf_url,
+                        "categories": result.categories,
+                        "source": "arxiv"
+                    }
+                    results.append(paper)
+                except Exception as e:
+                    logger.error(f"处理arXiv结果时出错: {str(e)}")
+                    continue
 
             logger.info(f"arXiv搜索完成，找到 {len(results)} 条结果")
             return results
@@ -174,6 +215,7 @@ class AcademicSearchService:
             logger.error(f"arXiv搜索失败: {str(e)}")
             return []
 
+    @cache_service.cached(prefix="semantic_scholar_search", ttl=3600)  # 缓存一小时
     async def search_semantic_scholar(self, query: str, limit: int = 10, sort_by: str = "relevance", years: str = "all", fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """搜索Semantic Scholar"""
         try:
@@ -225,28 +267,61 @@ class AcademicSearchService:
             else:
                 logger.warning("Semantic Scholar API未配置API密钥或使用示例密钥，将使用无密钥访问")
 
-            # 发送请求，带重试和延迟
-            max_retries = 3
-            retry_delay = 2  # 初始延迟秒数
+            # 发送请求，带增强的重试和延迟机制
+            max_retries = 5  # 增加重试次数
+            base_delay = 2  # 初始延迟秒数
+            max_delay = 60  # 最大延迟秒数
 
             for retry in range(max_retries):
                 try:
+                    # 添加随机延迟，避免多个请求同时发送
+                    if retry > 0:
+                        # 指数退避与抖动结合
+                        delay = min(base_delay * (2 ** retry) + random.uniform(0, 1), max_delay)
+                        logger.info(f"Semantic Scholar请求前等待 {delay:.2f} 秒")
+                        await asyncio.sleep(delay)
+
+                    # 发送请求
                     response = await self.client.get(url, params=params, headers=headers)
                     response.raise_for_status()
                     data = response.json()
+
+                    # 请求成功，跳出重试循环
                     break
-                except Exception as e:
-                    if retry < max_retries - 1:
-                        # 如果是429错误，增加更长的延迟
-                        if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 429:
-                            wait_time = retry_delay * (2 ** retry)  # 指数退避
-                            logger.warning(f"Semantic Scholar请求限制，等待{wait_time}秒后重试")
-                            await asyncio.sleep(wait_time)
-                        else:
-                            await asyncio.sleep(retry_delay)
+
+                except httpx.HTTPStatusError as e:
+                    status_code = e.response.status_code
+                    logger.warning(f"Semantic Scholar请求失败，状态码: {status_code}")
+
+                    if status_code == 429:  # Too Many Requests
+                        # 使用更长的延迟
+                        wait_time = min(base_delay * (2 ** retry) + random.uniform(0, 5), max_delay)
+                        logger.warning(f"Semantic Scholar请求限制，等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
+                    elif status_code == 503:  # Service Unavailable
+                        # 服务不可用，等待后重试
+                        wait_time = min(base_delay * (2 ** retry) + random.uniform(0, 3), max_delay)
+                        logger.warning(f"Semantic Scholar服务不可用，等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
+                    elif retry < max_retries - 1:  # 其他错误，但还有重试机会
+                        wait_time = min(base_delay * (1.5 ** retry) + random.uniform(0, 1), max_delay)
+                        logger.warning(f"Semantic Scholar请求错误，等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
                     else:
-                        # 最后一次重试也失败，抛出异常
-                        raise
+                        # 最后一次重试也失败，返回空结果
+                        logger.error(f"Semantic Scholar请求失败，所有重试均失败: {str(e)}")
+                        return []
+
+                except Exception as e:
+                    logger.error(f"Semantic Scholar请求异常: {str(e)}")
+                    if retry < max_retries - 1:
+                        wait_time = min(base_delay * (1.5 ** retry) + random.uniform(0, 1), max_delay)
+                        logger.warning(f"等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        # 最后一次重试也失败，返回空结果
+                        logger.error(f"Semantic Scholar请求失败，所有重试均失败: {str(e)}")
+                        return []
 
             # 处理结果
             results = []
@@ -270,6 +345,7 @@ class AcademicSearchService:
             logger.error(f"Semantic Scholar搜索失败: {str(e)}")
             return []
 
+    @cache_service.cached(prefix="academic_papers_search", ttl=3600)  # 缓存一小时
     async def search_academic_papers(
         self,
         query: str,
@@ -368,6 +444,7 @@ class AcademicSearchService:
                 "sources_stats": {}
             }
 
+    @cache_service.cached(prefix="paper_details", ttl=86400)  # 缓存24小时
     async def get_paper_details(self, paper_id: str, source: str = "semantic_scholar") -> Dict[str, Any]:
         """获取论文详情"""
         try:
@@ -453,32 +530,50 @@ class AcademicSearchService:
             logger.error(f"获取论文详情失败: {str(e)}")
             return {}
 
+    @cache_service.cached(prefix="research_trends", ttl=86400)  # 缓存24小时
     async def get_research_trends(self, field: str) -> List[Dict[str, Any]]:
         """获取研究趋势"""
         try:
             logger.info(f"获取研究趋势: {field}")
 
+            # 防止返回自身
+            if not field or not isinstance(field, str):
+                logger.warning(f"研究领域参数无效: {field}, 返回空列表")
+                return []
+
             # 构建查询
             query = f"survey {field} recent advances"
 
             # 搜索最近的综述论文
-            search_result = await self.search_academic_papers(
-                query=query,
-                limit=10,
-                sort_by="date",
-                years="last_5"
-            )
+            try:
+                search_result = await self.search_academic_papers(
+                    query=query,
+                    limit=10,
+                    sort_by="date",
+                    years="last_5"
+                )
 
-            # 按引用次数排序
-            papers = sorted(
-                search_result["results"],
-                key=lambda x: x.get("citations", 0),
-                reverse=True
-            )
+                # 验证搜索结果格式
+                if not isinstance(search_result, dict) or "results" not in search_result:
+                    logger.warning(f"搜索结果格式无效: {type(search_result)}, 返回空列表")
+                    return []
+
+                # 按引用次数排序
+                papers = sorted(
+                    search_result["results"],
+                    key=lambda x: x.get("citations", 0),
+                    reverse=True
+                )
+            except Exception as e:
+                logger.error(f"搜索学术论文失败: {str(e)}")
+                return []
 
             # 提取趋势信息
             trends = []
             for paper in papers[:10]:
+                if not isinstance(paper, dict):
+                    continue
+
                 trend = {
                     "title": paper.get("title", ""),
                     "abstract": paper.get("abstract", ""),
