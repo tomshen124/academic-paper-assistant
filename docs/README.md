@@ -295,7 +295,7 @@ backend/
 - [data_storage.md](data_storage.md) - 数据存储架构文档
 - [implementation_status.md](implementation_status.md) - 实现状态文档
 - [api.md](api.md) - API文档
-- [litellm_service.md](litellm_service.md) - LiteLLM服务文档
+- [llm_service.md](llm_service.md) - LLM服务文档
 - [user_guide.md](user_guide.md) - 用户指南
 - [translation_service.md](translation_service.md) - 翻译服务文档
 - [translation_guide.md](translation_guide.md) - 翻译功能使用指南

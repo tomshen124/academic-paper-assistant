@@ -1,57 +1,56 @@
-from app.core.llm.controller import ControllerAgent
-from app.core.llm.agents import WritingAgent, ReviewAgent, LiteratureAgent
+from typing import Dict, Any
 from app.core.logger import get_logger
+from app.services.agent_service import agent_coordinator
+from app.services.llm_service import llm_service
+from app.services.llm.token_counter import estimate_cost
 
-logger = get_logger()
+logger = get_logger("thesis_service")
 
 class ThesisService:
-    def __init__(self, llm_provider):
-        self.controller = ControllerAgent(llm_provider)
-        
-        # 初始化专门的agents
-        self.agents = {
-            "writing": WritingAgent(llm_provider),
-            "review": ReviewAgent(llm_provider),
-            "literature": LiteratureAgent(llm_provider)
-        }
-    
-    async def generate_thesis_section(self, request: Dict) -> Dict:
+    def __init__(self):
+        """初始化论文服务"""
+        self.agent_coordinator = agent_coordinator
+        logger.info("论文服务初始化完成")
+
+    async def generate_thesis_section(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """生成论文章节"""
         try:
-            # 1. 规划任务
-            plan_result = await self.controller.plan_task({
-                "title": request.get("title"),
-                "type": request.get("section_type"),
-                "requirements": request.get("requirements"),
-                "references": request.get("references")
-            })
-            
-            # 2. 检查成本是否在预算范围内
-            if plan_result["estimated_cost"] > request.get("max_cost", float("inf")):
-                raise ValueError(f"预估成本 ${plan_result['estimated_cost']} 超出预算")
-            
-            # 3. 执行计划
-            result = await self.controller.execute_plan(
-                plan_result["plan"],
-                self.agents
+            # 1. 使用规划智能体生成工作流
+            workflow = await self.agent_coordinator.plan_and_execute(
+                f"生成论文章节: {request.get('title')}",
+                {
+                    "title": request.get("title"),
+                    "section_type": request.get("section_type"),
+                    "requirements": request.get("requirements"),
+                    "references": request.get("references")
+                }
             )
-            
+
+            # 2. 获取最终结果
+            final_context = workflow.get("final_context", {})
+            content = final_context.get("content", "")
+
+            # 3. 获取token使用情况
+            token_usage = llm_service.get_token_usage()
+            execution_time = sum([step.get("result", {}).get("execution_time", 0)
+                                for step in workflow.get("workflow_results", [])])
+
             # 4. 记录执行情况
             logger.info(
                 f"任务完成: {request.get('title')} - "
-                f"Token使用: {result['token_usage']['total_tokens']}, "
-                f"耗时: {result['execution_time']}秒"
+                f"Token使用: {token_usage.get('total_tokens', 0)}, "
+                f"耗时: {execution_time}秒"
             )
-            
+
             return {
-                "content": result["results"],
+                "content": content,
                 "metrics": {
-                    "token_usage": result["token_usage"],
-                    "execution_time": result["execution_time"],
-                    "cost": estimate_cost(result["token_usage"])
+                    "token_usage": token_usage,
+                    "execution_time": execution_time,
+                    "cost": estimate_cost(token_usage)
                 }
             }
-            
+
         except Exception as e:
             logger.error(f"生成论文章节失败: {str(e)}")
             raise

@@ -83,6 +83,11 @@
             <el-icon><Coin /></el-icon>
             <template #title>Token管理</template>
           </el-menu-item>
+
+          <el-menu-item index="/mcp-external">
+            <el-icon><Connection /></el-icon>
+            <template #title>外部MCP连接</template>
+          </el-menu-item>
         </el-menu>
       </el-aside>
       <el-container>
@@ -145,7 +150,8 @@ import {
   Fold,
   Expand,
   ArrowDown,
-  UserFilled
+  UserFilled,
+  Connection
 } from '@element-plus/icons-vue'
 
 const isCollapse = ref(false)

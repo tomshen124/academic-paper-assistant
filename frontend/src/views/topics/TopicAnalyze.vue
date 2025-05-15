@@ -7,7 +7,7 @@
           <p>分析论文主题的可行性，帮助您做出更好的选择</p>
         </div>
       </template>
-      
+
       <div class="analyze-form">
         <el-form :model="formData" label-position="top" :rules="rules" ref="formRef">
           <el-form-item label="论文主题" prop="topic">
@@ -16,19 +16,19 @@
               placeholder="请输入论文主题"
             />
           </el-form-item>
-          
+
           <el-form-item label="学术领域" prop="academic_field">
             <el-select v-model="formData.academic_field" placeholder="请选择学术领域" style="width: 100%">
               <el-option v-for="field in academicFields" :key="field" :label="field" :value="field" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="学术级别">
             <el-select v-model="formData.academic_level" placeholder="请选择学术级别" style="width: 100%">
               <el-option v-for="level in academicLevels" :key="level" :label="level" :value="level" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" :loading="loading" @click="submitForm">分析可行性</el-button>
             <el-button @click="resetForm">重置</el-button>
@@ -36,7 +36,7 @@
         </el-form>
       </div>
     </el-card>
-    
+
     <el-card v-if="analysis" class="result-card">
       <template #header>
         <div class="card-header">
@@ -48,43 +48,43 @@
           </div>
         </div>
       </template>
-      
+
       <div class="analysis-result">
         <div class="result-section">
           <h3>难度评估</h3>
           <p>{{ analysis.difficulty }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>资源需求</h3>
           <p>{{ analysis.resources }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>时间估计</h3>
           <p>{{ analysis.time_estimate }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>研究空白</h3>
           <p>{{ analysis.research_gaps }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>潜在挑战</h3>
           <p>{{ analysis.challenges }}</p>
         </div>
-        
+
         <div class="result-section">
           <h3>改进建议</h3>
           <p>{{ analysis.suggestions }}</p>
         </div>
-        
+
         <div class="result-section recommendation">
           <h3>最终建议</h3>
           <p>{{ analysis.recommendation }}</p>
         </div>
-        
+
         <div class="result-actions">
           <el-button type="primary" @click="useThisTopic">使用此主题</el-button>
           <el-button type="success" @click="refineTopic">优化主题</el-button>
@@ -100,6 +100,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useRouter, useRoute } from 'vue-router';
 import { analyzeTopicFeasibility } from '@/api/modules/topics';
+import { saveUserData, getUserData } from '@/utils/userStorage';
 import type { TopicFeasibilityRequest, TopicFeasibilityResponse } from '@/types/topics';
 
 const router = useRouter();
@@ -170,7 +171,7 @@ onMounted(() => {
 // 提交表单
 const submitForm = async () => {
   if (!formRef.value) return;
-  
+
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
@@ -206,14 +207,38 @@ const getScoreType = (score: number) => {
 // 使用此主题
 const useThisTopic = () => {
   if (!formData.topic) return;
-  
-  // 将主题存储到本地存储
-  localStorage.setItem('selectedTopic', JSON.stringify({
+
+  // 创建主题对象
+  const topic = {
     title: formData.topic,
     academic_field: formData.academic_field,
     academic_level: formData.academic_level
-  }));
-  
+  };
+
+  // 将主题存储到用户存储
+  saveUserData('selectedTopic', topic);
+
+  // 保存到主题历史记录
+  const topicsHistory = getUserData<any[]>('topicsHistory') || [];
+  const exists = topicsHistory.some(t => t.title === topic.title);
+
+  if (!exists) {
+    // 生成唯一ID
+    const id = `topic-${Date.now()}`;
+    topicsHistory.push({
+      ...topic,
+      id
+    });
+
+    // 如果历史记录超过10个，删除最早的
+    if (topicsHistory.length > 10) {
+      topicsHistory.shift();
+    }
+
+    // 保存到用户存储
+    saveUserData('topicsHistory', topicsHistory);
+  }
+
   ElMessage.success(`已选择主题: ${formData.topic}`);
 };
 
@@ -307,12 +332,12 @@ const generateOutline = () => {
   .card-header {
     flex-direction: column;
   }
-  
+
   .score-badge {
     margin-left: 0;
     margin-top: 10px;
   }
-  
+
   .result-actions {
     flex-direction: column;
   }

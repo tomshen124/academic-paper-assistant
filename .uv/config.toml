@@ -1,0 +1,13 @@
+[uv]
+# 使用pyproject.toml作为依赖源
+use-pyproject = true
+
+# 虚拟环境配置
+venv-path = "eduvenv"
+venv-name = "eduvenv"
+
+# 缓存配置
+cache-dir = ".cache/uv"
+
+# 安装配置
+install.extras = ["dev"]

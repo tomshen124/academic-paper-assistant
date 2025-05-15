@@ -19,18 +19,18 @@ class InterestAnalysisService:
     ) -> Dict[str, Any]:
         """
         分析用户兴趣并生成初步的主题方向
-        
+
         Args:
             user_interests: 用户研究兴趣
             academic_field: 学术领域
             academic_level: 学术级别
-            
+
         Returns:
             包含分析结果的字典，包括关键概念、研究方向等
         """
         try:
             logger.info(f"分析用户兴趣: 兴趣={user_interests}, 领域={academic_field}, 级别={academic_level}")
-            
+
             # 构建提示
             system_prompt = f"""你是一个学术研究兴趣分析专家。你的任务是分析用户的研究兴趣，并提取关键概念和潜在的研究方向。
 
@@ -58,21 +58,29 @@ class InterestAnalysisService:
 请确保你的分析是深入的、有见解的，并且与用户的学术级别相匹配。"""
 
             # 调用LLM
+            # 构建消息列表，确保最后一条是用户消息
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"请分析我的研究兴趣: {user_interests}"}
+            ]
+
+            logger.info(f"发送到LLM的消息格式: {messages}")
+
             response = await llm_service.acompletion(
-                messages=[{"role": "system", "content": system_prompt}],
+                messages=messages,
                 max_tokens=1500,
                 temperature=0.3
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
             # 记录原始响应以便调试
             logger.info(f"原始 LLM 响应(兴趣分析): {content[:200]}...")
-            
+
             # 处理可能的Markdown代码块
             cleaned_content = self._clean_json_response(content)
-            
+
             # 尝试解析JSON
             try:
                 result = json.loads(cleaned_content)
@@ -80,7 +88,7 @@ class InterestAnalysisService:
                 return result
             except json.JSONDecodeError as e:
                 logger.error(f"无法解析LLM响应为JSON: {str(e)}")
-                
+
                 # 尝试修复可能的JSON格式问题
                 try:
                     fixed_content = cleaned_content.replace("''", '"').replace("'", '"')
@@ -98,32 +106,32 @@ class InterestAnalysisService:
                             return result
                         except:
                             pass
-                
+
                 # 如果所有尝试都失败，返回空字典
                 logger.error("所有解析尝试均失败，返回空字典")
                 return {}
-                
+
         except Exception as e:
             logger.error(f"分析用户兴趣失败: {str(e)}")
             return {}
-            
+
     def _clean_json_response(self, content: str) -> str:
         """清理LLM响应中的Markdown代码块标记"""
         # 移除可能的Markdown代码块标记
         import re
-        
+
         # 首先尝试匹配```json和```之间的内容
         json_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', content)
         if json_block_match:
             # 返回代码块内的内容
             return json_block_match.group(1).strip()
-            
+
         # 如果没有找到代码块，尝试匹配整个JSON对象
         # 匹配从第一个{开始到最后一个}结束的内容
         json_obj_match = re.search(r'(\{[\s\S]*\})', content)
         if json_obj_match:
             return json_obj_match.group(1).strip()
-            
+
         # 如果以上都失败，返回原始内容
         return content.strip()
 

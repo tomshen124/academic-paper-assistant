@@ -12,6 +12,7 @@ class TokenUsage(Base):
     model = Column(String(100), nullable=False)
     service = Column(String(100), nullable=False)
     task = Column(String(100), nullable=False)
+    task_type = Column(String(50), nullable=False, default="default", index=True)  # 新增字段，如 'default', 'translation' 等
     prompt_tokens = Column(Integer, nullable=False)
     completion_tokens = Column(Integer, nullable=False)
     total_tokens = Column(Integer, nullable=False)

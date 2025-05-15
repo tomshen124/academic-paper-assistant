@@ -89,15 +89,19 @@ llm:
     gpt-3.5-turbo: "openai"        # OpenAI模型
     gpt-4: "openai"                # OpenAI GPT-4模型
     claude-2: "anthropic"          # Anthropic Claude模型
-    "Qwen/QwQ-32B": "openai"       # 使用OpenAI兼容API的模型
-    qwen-turbo: "openai"           # 阿里云模型（OpenAI兼容）
-    qwen-plus: "openai"            # 阿里云模型（OpenAI兼容）
+    Qwen/QwQ-32B: "siliconflow"   # SiliconFlow平台上的模型
+    qwen-turbo: "qwen"             # 阿里云模型
+    qwen-plus: "qwen"              # 阿里云模型
+    siliconflow: "siliconflow"     # SiliconFlow平台
+    glm-4: "zhipuai"               # 智谱AI GLM-4模型
+    glm-3-turbo: "zhipuai"         # 智谱AI GLM-3-Turbo模型
+    zhipuai: "zhipuai"             # 智谱AI平台
 
   # 智能体配置
   agent_configs:
     # 写作智能体
     writing:
-      model: "deepseek-chat"  # 使用的模型
+      model: "deepseek-reasoner"  # 使用的模型
       temperature: 0.7        # 温度参数
       system_prompt: "你是一位专业的学术写作专家，擅长撰写清晰、结构化的学术论文。"
 
@@ -113,15 +117,33 @@ llm:
       temperature: 0.5        # 温度参数
       system_prompt: "你是一位文献研究专家，擅长分析和总结学术文献。"
 
+    # 主题推荐智能体
+    topic:
+      model: "deepseek-reasoner"  # 使用的模型
+      temperature: 0.6        # 温度参数
+      system_prompt: "你是一位学术主题专家，擅长根据用户兴趣推荐有价值的研究主题。"
+
+    # 提纲生成智能体
+    outline:
+      model: "deepseek-reasoner"  # 使用的模型
+      temperature: 0.4        # 温度参数
+      system_prompt: "你是一位学术提纲专家，擅长设计结构清晰、逻辑严密的论文提纲。"
+
+    # 翻译智能体
+    translation:
+      model: "glm-4"          # 使用智谱AI的GLM-4模型
+      temperature: 0.3        # 温度参数
+      system_prompt: "你是一位专业的翻译专家，擅长准确翻译学术内容，保持专业术语的一致性。"
+
 # ==========================================
 # 学术搜索配置
 # ==========================================
 academic_search:
   # 启用的搜索源
   enabled_sources:
-    semantic_scholar: true    # 是否启用Semantic Scholar
-    arxiv: true               # 是否启用arXiv
-    google_scholar: false     # 是否启用Google Scholar（默认禁用，容易被IP封禁）
+    semantic_scholar: false   # 禁用Semantic Scholar（需要API密钥）
+    arxiv: true               # 启用arXiv（不需要API密钥）
+    google_scholar: false     # 禁用Google Scholar（容易被IP封禁）
 
   # 默认搜索参数
   default_params:
@@ -148,6 +170,30 @@ academic_search:
   google_scholar:
     proxy: ""                 # 代理服务器，避免IP被封
     timeout: 30               # 超时时间（秒）
+
+# ==========================================
+# 翻译服务配置
+# ==========================================
+translation:
+  # 是否使用默认LLM
+  use_default_llm: false
+
+  # 翻译专用模型配置（当use_default_llm为false时生效）
+  model: "glm-4"                  # 翻译专用模型，使用智谱AI的GLM-4模型
+  max_tokens: 4096                # 翻译专用最大token数
+  temperature: 0.3                # 翻译专用温度参数（更低以提高准确性）
+  top_p: 0.95                     # 翻译专用Top-p参数
+  frequency_penalty: 0.0          # 翻译专用频率惩罚
+  presence_penalty: 0.0           # 翻译专用存在惩罚
+
+  # 翻译专用API配置（为空则使用环境变量中的配置）
+  api_key: ""                     # 翻译专用API密钥
+  api_base: ""                    # 翻译专用API基础URL
+  provider: "zhipuai"             # 翻译专用提供商
+
+  # 翻译缓存配置
+  cache_enable: true              # 是否启用翻译缓存
+  cache_ttl: 86400                # 翻译缓存过期时间（秒），默认为24小时
 
 # ==========================================
 # MCP (Model Context Protocol) 配置

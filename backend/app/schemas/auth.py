@@ -14,3 +14,7 @@ class Login(BaseModel):
     """登录请求模式"""
     username: str
     password: str
+
+class RefreshToken(BaseModel):
+    """刷新令牌请求模式"""
+    token: str

@@ -3,15 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from jose import jwt, JWTError
+
 from app.api.v1 import api_router
 from app.services.mcp_adapter import mcp_adapter
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.db.session import SessionLocal
 from app.db.init_db import init_db
-from app.core.context import set_current_user_id, reset_current_user_id
-from app.core.security import SECRET_KEY, ALGORITHM
+from app.core.middleware import LoggingMiddleware, UserIDMiddleware
 import asyncio
 
 # 初始化日志
@@ -43,49 +42,32 @@ app = FastAPI(
     redoc_url=None  # 禁用默认的 redoc
 )
 
-# 用户ID中间件
-class UserIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # 重置用户ID
-        reset_current_user_id()
-
-        # 尝试从请求头中提取用户ID
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            token = auth_header.replace('Bearer ', '')
-            try:
-                # 解析JWT令牌
-                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-                username = payload.get("sub")
-                if username:
-                    # 从数据库中获取用户ID
-                    db = SessionLocal()
-                    try:
-                        from app.models.user import User
-                        user = db.query(User).filter(User.username == username).first()
-                        if user:
-                            # 设置当前用户ID
-                            set_current_user_id(user.id)
-                    finally:
-                        db.close()
-            except JWTError:
-                pass
-
-        # 继续处理请求
-        response = await call_next(request)
-        return response
+# 中间件配置
 
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",  # 本地开发环境
+        "http://127.0.0.1:3000",  # 本地IP开发环境
+        "http://localhost:5173",  # Vite默认开发环境
+        "http://127.0.0.1:5173",  # Vite默认IP开发环境
+        "http://192.168.159.155:3000",  # 前端开发环境
+        "http://192.168.159.155:8000",  # 后端开发环境
+        "http://localhost:8000",  # 后端开发环境
+        "http://127.0.0.1:8000",  # 后端开发环境
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # 添加用户ID中间件
 app.add_middleware(UserIDMiddleware)
+
+# 添加日志中间件
+app.add_middleware(LoggingMiddleware)
 
 # 注册API路由
 app.include_router(api_router, prefix="/api/v1")

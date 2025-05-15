@@ -133,3 +133,41 @@ export interface OutlineValidationResponse {
   /** 总评分 */
   overall_score: number;
 }
+
+/**
+ * 用户提纲项
+ */
+export interface UserOutlineItem {
+  /** 提纲ID */
+  id: number;
+  /** 提纲标题 */
+  title: string;
+  /** 主题 */
+  topic: string;
+  /** 主题ID */
+  topic_id: number;
+  /** 摘要 */
+  abstract: string;
+  /** 关键词 */
+  keywords: string[];
+  /** 论文类型 */
+  paper_type: string;
+  /** 学术领域 */
+  academic_field: string;
+  /** 学术级别 */
+  academic_level: string;
+  /** 创建时间 */
+  created_at: string;
+  /** 更新时间 */
+  updated_at: string;
+}
+
+/**
+ * 用户提纲列表响应
+ */
+export interface UserOutlinesResponse {
+  /** 提纲列表 */
+  outlines: UserOutlineItem[];
+  /** 总数 */
+  total: number;
+}

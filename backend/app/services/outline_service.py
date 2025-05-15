@@ -5,6 +5,7 @@ from app.core.logger import get_logger
 from app.services.llm_service import llm_service
 from app.services.academic_search_service import academic_search_service
 from app.utils.json_utils import safe_dumps
+import copy
 
 # 创建日志器
 logger = get_logger("outline_service")
@@ -14,8 +15,7 @@ class OutlineService:
 
     def __init__(self):
         """初始化提纲生成服务"""
-        self.llm_service = llm_service
-        self.academic_search_service = academic_search_service
+        # 使用全局服务实例
         logger.info("提纲生成服务初始化完成")
 
     def _clean_json_response(self, content: str) -> str:
@@ -44,18 +44,104 @@ class OutlineService:
 
             # 搜索相关文献
             try:
-                papers = await self.academic_search_service.search_academic_papers(topic, limit=5)
+                # 搜索学术论文
+                # 优先使用arXiv搜索，不需要API密钥
+                papers = await academic_search_service.search_academic_papers(
+                    query=topic,
+                    limit=5,
+                    sources=["arxiv"]  # 明确指定使用arXiv
+                )
 
                 # 验证papers是否是可序列化的对象
                 if not isinstance(papers, dict):
                     logger.warning(f"搜索结果不是字典格式: {type(papers)}, 将使用空字典代替")
                     papers = {"results": [], "total": 0, "query": topic}
 
+                # 创建一个新的可序列化字典，避免引用可能包含不可序列化对象的原始字典
+                serializable_papers = {
+                    "results": [],
+                    "total": papers.get("total", 0),
+                    "query": papers.get("query", topic)
+                }
+
+                # 确保结果列表中的每个论文对象都是可序列化的
+                for paper in papers.get("results", [])[:5]:  # 只使用前5篇文章
+                    serializable_paper = {
+                        "title": paper.get("title", ""),
+                        "authors": paper.get("authors", []),
+                        "year": paper.get("year", ""),
+                        "abstract": paper.get("abstract", "")[:300] if paper.get("abstract") else "",  # 限制摘要长度
+                        "url": paper.get("url", ""),
+                        "source": paper.get("source", "arxiv")
+                    }
+                    serializable_papers["results"].append(serializable_paper)
+
                 # 尝试将papers转换为JSON字符串
-                papers_json = safe_dumps(papers, ensure_ascii=False, max_length=1500)
+                papers_json = safe_dumps(serializable_papers, ensure_ascii=False, max_length=1500)
             except Exception as e:
                 logger.error(f"处理相关文献失败: {str(e)}")
-                papers_json = "[]"
+                # 提供一个有效的空结果JSON字符串
+                papers_json = '{"results": [], "total": 0, "query": "' + topic + '"}'
+
+            # 使用智能体协调器进行多智能体协作
+            from app.services.agent_service import agent_coordinator
+
+            logger.info("使用智能体协调器生成提纲")
+
+            # 使用预设工作流
+            workflow_result = await agent_coordinator.execute_predefined_workflow(
+                "outline_generation",
+                {
+                    "topic": topic,
+                    "paper_type": paper_type,
+                    "academic_field": academic_field,
+                    "academic_level": academic_level,
+                    "length": length,
+                    "papers": papers_json
+                }
+            )
+
+            # 检查工作流执行结果
+            if "error" in workflow_result:
+                logger.error(f"工作流执行失败: {workflow_result['error']}")
+                # 如果工作流执行失败，回退到原始方法
+                return await self._fallback_generate_outline(topic, paper_type, academic_field, academic_level, length, papers_json)
+
+            # 从最终上下文中获取提纲
+            final_context = workflow_result.get("final_context", {})
+
+            # 尝试从不同的可能位置获取提纲
+            if "outline" in final_context:
+                outline = final_context["outline"]
+            elif "generate_outline_result" in final_context:
+                outline = final_context["generate_outline_result"]
+            elif "refine_outline_result" in final_context and "content" in final_context["refine_outline_result"]:
+                outline = final_context["refine_outline_result"]["content"]
+            else:
+                logger.error("无法从工作流结果中获取提纲")
+                # 如果无法获取提纲，回退到原始方法
+                return await self._fallback_generate_outline(topic, paper_type, academic_field, academic_level, length, papers_json)
+
+            logger.info(f"工作流执行完成，生成了提纲: {outline.get('title', 'N/A')}, 耗时: {workflow_result.get('execution_time', 0):.2f}秒")
+
+            return outline
+
+        except Exception as e:
+            logger.error(f"生成提纲失败: {str(e)}")
+            return {}
+
+    async def _fallback_generate_outline(
+        self,
+        topic: str,
+        paper_type: str,
+        academic_field: str,
+        academic_level: str = "undergraduate",
+        length: str = "3000words",
+        papers_json: str = None
+    ) -> Dict[str, Any]:
+        """备用方法：直接使用LLM生成提纲"""
+        try:
+            logger.info(f"使用备用方法生成提纲: 主题={topic}")
 
             # 构建系统提示
             system_prompt = "你是一个学术论文提纲生成专家。你的任务是为以下论文主题生成详细的提纲。\n\n"
@@ -64,7 +150,10 @@ class OutlineService:
             system_prompt += f"学术领域: {academic_field}\n"
             system_prompt += f"学术级别: {academic_level}\n"
             system_prompt += f"预期长度: {length}\n\n"
-            system_prompt += f"相关文献:\n{papers_json}\n\n"
+
+            if papers_json:
+                system_prompt += f"相关文献:\n{papers_json}\n\n"
+
             system_prompt += """请生成一个详细的论文提纲，包括以下部分:
 1. 标题：具体且能反映研究内容的标题
 2. 摘要：概述论文的主要内容和贡献
@@ -113,15 +202,16 @@ class OutlineService:
 """
             system_prompt += f"\n确保提纲结构逻辑清晰，内容全面，符合{academic_field}领域的学术规范。"
 
-            # 调用LLM
+            # 调用LLM，使用提纲智能体
             # 注意：deepseek-reasoner模型要求最后一条消息必须是用户消息
-            response = await self.llm_service.acompletion(
+            response = await llm_service.acompletion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"请为论文《{topic}》生成一个详细的提纲。"}
                 ],
                 max_tokens=2500,
-                temperature=0.4
+                temperature=0.4,
+                agent_type="outline"  # 使用提纲生成智能体
             )
 
             # 解析响应
@@ -173,7 +263,7 @@ class OutlineService:
 
             # 调用LLM
             # 注意：deepseek-reasoner模型要求最后一条消息必须是用户消息
-            response = await self.llm_service.acompletion(
+            response = await llm_service.acompletion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"请根据用户反馈《{feedback}》优化提纲。"}
@@ -253,7 +343,7 @@ class OutlineService:
 
             # 调用LLM
             # 注意：deepseek-reasoner模型要求最后一条消息必须是用户消息
-            response = await self.llm_service.acompletion(
+            response = await llm_service.acompletion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"请为{paper_type}类型的{academic_field}领域论文提供提纲模板。"}
@@ -342,7 +432,7 @@ class OutlineService:
 
             # 调用LLM
             # 注意：deepseek-reasoner模型要求最后一条消息必须是用户消息
-            response = await self.llm_service.acompletion(
+            response = await llm_service.acompletion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": "请分析这个论文提纲的逻辑结构，找出潜在问题并提供改进建议。"}

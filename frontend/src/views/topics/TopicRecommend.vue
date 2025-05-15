@@ -19,13 +19,23 @@
         </el-form-item>
 
         <el-form-item label="学术领域" prop="academic_field">
-          <el-select v-model="formData.academic_field" placeholder="请选择学术领域" style="width: 100%">
+          <el-select
+            v-model="formData.academic_field"
+            placeholder="请选择学术领域"
+            style="width: 100%"
+            @change="saveAcademicSettings"
+          >
             <el-option v-for="field in academicFields" :key="field" :label="field" :value="field" />
           </el-select>
         </el-form-item>
 
         <el-form-item label="学术级别">
-          <el-select v-model="formData.academic_level" placeholder="请选择学术级别" style="width: 100%">
+          <el-select
+            v-model="formData.academic_level"
+            placeholder="请选择学术级别"
+            style="width: 100%"
+            @change="saveAcademicSettings"
+          >
             <el-option v-for="level in academicLevels" :key="level" :label="level" :value="level" />
           </el-select>
         </el-form-item>
@@ -58,13 +68,26 @@
         <el-skeleton :rows="5" animated />
         <div class="loading-text">
           <el-icon class="is-loading"><Loading /></el-icon>
-          <span>正在生成主题，这可能需要一分钟左右的时间...</span>
+          <span>正在生成主题，这可能需要一到两分钟的时间...</span>
+          <div class="loading-tips">
+            <p>提示：生成过程中请不要刷新页面或关闭浏览器标签页</p>
+            <p>如果等待时间过长，可能是网络问题或服务器繁忙，请稍后再试</p>
+          </div>
         </div>
+        <el-progress :percentage="loadingProgress" :duration="120" :format="progressFormat" />
       </div>
     </el-card>
 
     <!-- 主题结果 -->
-    <el-card v-if="topics.length > 0" class="topic-results-card">
+    <el-card v-if="topics.length > 0 || isLoadingSavedTopics" class="topic-results-card">
+      <!-- 加载已保存主题的状态 -->
+      <div v-if="isLoadingSavedTopics" class="loading-saved-topics">
+        <el-skeleton :rows="3" animated />
+        <div class="loading-text">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>正在加载已保存的主题...</span>
+        </div>
+      </div>
       <template #header>
         <div class="card-header">
           <h2>推荐主题 ({{ topics.length }})</h2>
@@ -87,49 +110,59 @@
         </div>
 
         <el-collapse v-model="activeTopics">
-          <!-- 调试信息 -->
-          <div class="debug-info" v-if="isDev">
-            <p>主题数量: {{ topics.length }}</p>
-            <pre>{{ JSON.stringify(topics, null, 2) }}</pre>
-          </div>
 
           <el-collapse-item v-for="(topic, index) in topics" :key="index" :name="index">
             <template #title>
               <div class="topic-title">
                 <span class="topic-number">{{ index + 1 }}</span>
                 <h3>{{ topic.title || '未命名主题' }}</h3>
+                <span v-if="topic.created_at_formatted" class="topic-timestamp">
+                  创建于: {{ topic.created_at_formatted }}
+                </span>
               </div>
             </template>
 
             <div class="topic-details">
+              <!-- 标题翻译 -->
+              <div class="topic-detail-item">
+                <h4>主题标题</h4>
+                <translatable-content :original-content="topic.title || '未命名主题'" />
+              </div>
+
+              <!-- 研究问题翻译 -->
               <div class="topic-detail-item">
                 <h4>研究问题</h4>
-                <p>{{ topic.research_question || '无研究问题' }}</p>
+                <translatable-content :original-content="topic.research_question || '无研究问题'" />
               </div>
 
+              <!-- 可行性翻译 -->
               <div class="topic-detail-item">
                 <h4>可行性</h4>
-                <p>{{ topic.feasibility || '未评估' }}</p>
+                <translatable-content :original-content="topic.feasibility || '未评估'" />
               </div>
 
+              <!-- 创新点翻译 -->
               <div class="topic-detail-item">
                 <h4>创新点</h4>
-                <p>{{ topic.innovation || '无创新点' }}</p>
+                <translatable-content :original-content="topic.innovation || '无创新点'" />
               </div>
 
+              <!-- 研究方法翻译 -->
               <div class="topic-detail-item">
                 <h4>研究方法</h4>
-                <p>{{ topic.methodology || '无研究方法' }}</p>
+                <translatable-content :original-content="topic.methodology || '无研究方法'" />
               </div>
 
+              <!-- 所需资源翻译 -->
               <div class="topic-detail-item">
                 <h4>所需资源</h4>
-                <p>{{ topic.resources || '无资源需求' }}</p>
+                <translatable-content :original-content="topic.resources || '无资源需求'" />
               </div>
 
+              <!-- 预期成果翻译 -->
               <div class="topic-detail-item">
                 <h4>预期成果</h4>
-                <p>{{ topic.expected_outcomes || '无预期成果' }}</p>
+                <translatable-content :original-content="topic.expected_outcomes || '无预期成果'" />
               </div>
 
               <div class="topic-detail-item">
@@ -156,12 +189,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, onUnmounted, onMounted } from 'vue';
+import { saveUserData, getUserData } from '@/utils/userStorage';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { Loading } from '@element-plus/icons-vue';
-import { recommendTopics } from '@/api/modules/topics';
+import { recommendTopics, recommendTopicsStream, getUserTopics } from '@/api/modules/topics';
 import { analyzeInterests } from '@/api/modules/interests';
+import { translateContent } from '@/api/modules/translation';
+import TranslatableContent from '@/components/Translation/TranslatableContent.vue';
 import type { TopicRequest, TopicResponse } from '@/types/topics';
 
 const router = useRouter();
@@ -233,8 +269,92 @@ const academicLevels = [
 
 const formRef = ref<FormInstance>();
 const loading = ref(false);
+const loadingProgress = ref(0);
 const topics = ref<TopicResponse[]>([]);
 const activeTopics = ref<number[]>([0]); // 默认展开第一个主题
+
+// 标记是否为加载已保存的主题
+const isLoadingSavedTopics = ref(false);
+
+// 格式化日期时间
+const formatDateTime = (dateTimeString: string) => {
+  if (!dateTimeString) return '未知时间';
+  const date = new Date(dateTimeString);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};
+
+// 从后端获取已保存的主题
+const fetchSavedTopics = async () => {
+  try {
+    isLoadingSavedTopics.value = true;
+    const result = await getUserTopics();
+    if (result && Array.isArray(result) && result.length > 0) {
+      // 将已保存的主题转换为前端需要的格式，并添加时间信息
+      topics.value = result.map(topic => ({
+        id: topic.id,
+        title: topic.title || '未命名主题',
+        research_question: topic.research_question || '无研究问题',
+        feasibility: topic.feasibility || '未评估',
+        innovation: topic.innovation || '无创新点',
+        methodology: topic.methodology || '无研究方法',
+        resources: topic.resources || '无资源需求',
+        expected_outcomes: topic.expected_outcomes || '无预期成果',
+        keywords: Array.isArray(topic.keywords) ? topic.keywords : [],
+        created_at: topic.created_at,
+        created_at_formatted: formatDateTime(topic.created_at)
+      }));
+
+      // 按创建时间降序排序（最新的在前面）
+      topics.value.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      // 默认展开第一个主题
+      if (topics.value.length > 0) {
+        activeTopics.value = [0];
+      }
+
+      console.log('获取到已保存的主题:', topics.value);
+      ElMessage.info(`已加载${topics.value.length}个已保存的主题（按时间排序）`);
+    }
+  } catch (error) {
+    console.error('获取已保存主题失败:', error);
+  } finally {
+    isLoadingSavedTopics.value = false;
+  }
+};
+
+// 进度条格式化函数
+const progressFormat = (percentage: number) => {
+  return percentage < 100 ? `正在生成主题 ${percentage.toFixed(0)}%` : '生成完成';
+};
+
+// 在组件挂载时获取已保存的主题和学术设置
+onMounted(() => {
+  // 获取已保存的主题
+  fetchSavedTopics();
+
+  // 加载已保存的学术设置
+  const savedSettings = getUserData<{academic_field: string; academic_level: string}>('academicSettings');
+  if (savedSettings) {
+    if (savedSettings.academic_field) {
+      formData.academic_field = savedSettings.academic_field;
+    }
+    if (savedSettings.academic_level) {
+      formData.academic_level = savedSettings.academic_level;
+    }
+    console.log('已加载学术设置:', savedSettings);
+  }
+});
 
 // 提交表单
 const submitForm = async () => {
@@ -243,7 +363,15 @@ const submitForm = async () => {
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
+      loadingProgress.value = 0;
       topics.value = []; // 清空之前的主题数据
+
+      // 启动进度条自动更新
+      const progressInterval = setInterval(() => {
+        if (loadingProgress.value < 95) {
+          loadingProgress.value += 1;
+        }
+      }, 1000);
 
       try {
         // 显示正在生成的提示
@@ -252,76 +380,94 @@ const submitForm = async () => {
         // 清除之前的主题数据，确保不会显示旧数据
         topics.value = [];
 
-        // 第一步：分析用户兴趣
-        console.log('开始分析用户兴趣...');
-        const interestAnalysis = await analyzeInterests(formData);
-        console.log('兴趣分析结果:', interestAnalysis);
+        // 使用流式推荐主题API
+        console.log('开始流式生成主题...');
 
-        if (!interestAnalysis || Object.keys(interestAnalysis).length === 0) {
-          ElMessage.warning('分析用户兴趣失败，请尝试修改您的输入或稍后重试');
-          loading.value = false;
-          return;
-        }
+        // 定义事件处理函数
+        const closeStream = recommendTopicsStream(formData, {
+          // 状态更新
+          onStatus: (message) => {
+            console.log('状态更新:', message);
+            ElMessage.info(message);
+          },
 
-        // 第二步：生成主题推荐
-        console.log('开始生成主题推荐...');
-        // 将兴趣分析结果添加到请求中，使后端可以使用这些信息
-        const enhancedFormData = {
-          ...formData,
-          interest_analysis: interestAnalysis
-        };
+          // 兴趣分析结果
+          onInterestAnalysis: (data) => {
+            console.log('兴趣分析结果:', data);
+            // 可以在这里显示兴趣分析结果
+            ElMessage.success('兴趣分析完成，正在生成主题...');
 
-        const result = await recommendTopics(enhancedFormData);
-        console.log('接收到的主题数据:', result);
+            // 更新进度
+            loadingProgress.value = 30;
+          },
 
-        // 确保结果是数组
-        if (Array.isArray(result) && result.length > 0) {
-          // 深拷贝结果，避免引用问题
-          topics.value = JSON.parse(JSON.stringify(result));
-          console.log('设置主题数组:', topics.value);
-        } else if (result && typeof result === 'object') {
-          // 如果结果是单个对象，将其包装为数组
-          topics.value = [JSON.parse(JSON.stringify(result))];
-          console.log('设置单个主题对象:', topics.value);
-        } else {
-          // 如果结果为空或格式不正确，显示错误信息
-          topics.value = [];
-          ElMessage.warning('未能生成有效的主题，请尝试修改您的输入或稍后重试');
-          console.error('返回的主题数据格式不正确或为空:', result);
-          loading.value = false;
-          return;
-        }
+          // 收到主题
+          onTopic: (topic) => {
+            console.log('收到主题:', topic);
 
-        // 再次检查主题数组是否有效
-        if (topics.value.length === 0) {
-          ElMessage.warning('未能生成有效的主题，请尝试修改您的输入或稍后重试');
-          loading.value = false;
-          return;
-        }
+            // 添加到主题列表
+            topics.value.push(topic);
 
-        console.log('设置后的topics值:', topics.value);
-        console.log('主题数量:', topics.value.length);
+            // 展开新主题
+            activeTopics.value.push(topics.value.length - 1);
 
-        if (topics.value.length === 0) {
-          ElMessage.warning('未找到匹配的主题，请尝试调整您的研究兴趣或学术领域');
-        } else {
-          ElMessage.success(`成功获取 ${topics.value.length} 个推荐主题`);
-          // 强制展开所有主题
-          activeTopics.value = topics.value.map((_, index) => index);
+            // 更新进度
+            const progress = 30 + (topics.value.length / formData.topic_count) * 60;
+            loadingProgress.value = Math.min(progress, 90);
 
-          // 滚动到主题列表
-          setTimeout(() => {
-            const topicsElement = document.querySelector('.topic-results-card');
-            if (topicsElement) {
-              topicsElement.scrollIntoView({ behavior: 'smooth' });
-            }
-          }, 100);
-        }
+            // 滚动到主题列表
+            setTimeout(() => {
+              const topicsElement = document.querySelector('.topic-results-card');
+              if (topicsElement) {
+                topicsElement.scrollIntoView({ behavior: 'smooth' });
+              }
+            }, 100);
+          },
+
+          // 完成
+          onComplete: (message) => {
+            console.log('生成完成:', message);
+            ElMessage.success(`成功获取 ${topics.value.length} 个推荐主题`);
+
+            // 设置进度为100%
+            loadingProgress.value = 100;
+
+            // 清除定时器
+            clearInterval(progressInterval);
+
+            // 关闭加载状态
+            setTimeout(() => {
+              loading.value = false;
+            }, 1000);
+          },
+
+          // 错误处理
+          onError: (message) => {
+            console.error('生成主题错误:', message);
+            ElMessage.error(`生成主题错误: ${message}`);
+
+            // 清除定时器
+            clearInterval(progressInterval);
+
+            // 关闭加载状态
+            loading.value = false;
+          }
+        });
+
+        // 在组件卸载时关闭流
+        onUnmounted(() => {
+          closeStream();
+        });
+
       } catch (error) {
         console.error('获取推荐主题失败:', error);
         ElMessage.error('获取推荐主题失败，请稍后重试');
         topics.value = [];
-      } finally {
+
+        // 清除定时器
+        clearInterval(progressInterval);
+
+        // 关闭加载状态
         loading.value = false;
       }
     }
@@ -338,13 +484,17 @@ const resetForm = () => {
 
 // 选择主题
 const selectTopic = (topic: TopicResponse) => {
-  // 将选中的主题存储到本地存储
+  // 确保主题有ID
+  const topicId = topic.id || `topic-${Date.now()}`;
+
+  // 将选中的主题存储到用户特定存储
   const topicWithFields = {
     ...topic,
+    id: topicId, // 确保ID被包含
     academic_field: formData.academic_field,
     academic_level: formData.academic_level
   };
-  localStorage.setItem('selectedTopic', JSON.stringify(topicWithFields));
+  saveUserData('selectedTopic', topicWithFields);
   ElMessage.success(`已选择主题: ${topic.title}`);
 
   // 保存到主题历史记录
@@ -360,37 +510,39 @@ const selectTopic = (topic: TopicResponse) => {
 };
 
 // 将主题保存到历史记录
-const saveTopicToHistory = (topic: TopicResponse & { academic_field?: string, academic_level?: string }) => {
-  // 从本地存储中获取历史记录
-  let topicsHistory: Array<TopicResponse & { id: string }> = [];
-  const historyStr = localStorage.getItem('topicsHistory');
+const saveTopicToHistory = (topic: TopicResponse) => {
+  // 从用户存储获取历史记录
+  let topicsHistory = getUserData<any[]>('topicsHistory') || [];
 
-  if (historyStr) {
-    try {
-      topicsHistory = JSON.parse(historyStr);
-    } catch (error) {
-      console.error('解析主题历史记录失败:', error);
-    }
-  }
-
-  // 检查主题是否已存在
-  const exists = topicsHistory.some(t => t.title === topic.title);
-
+  // 检查是否已存在
+  const exists = topicsHistory.some((t: any) => t.title === topic.title);
   if (!exists) {
-    // 生成唯一ID
-    const id = `topic-${Date.now()}`;
-    topicsHistory.push({
+    // 添加新主题到历史记录
+    topicsHistory.unshift({
       ...topic,
-      id
+      timestamp: new Date().toISOString()
     });
 
-    // 如果历史记录超过10个，删除最早的
-    if (topicsHistory.length > 10) {
-      topicsHistory.shift();
+    // 限制记录数量
+    if (topicsHistory.length > 20) {
+      topicsHistory = topicsHistory.slice(0, 20);
     }
 
-    // 保存到本地存储
-    localStorage.setItem('topicsHistory', JSON.stringify(topicsHistory));
+    // 保存到用户存储
+    saveUserData('topicsHistory', topicsHistory);
+  }
+};
+
+// 保存学术领域和学术级别设置
+const saveAcademicSettings = () => {
+  if (formData.academic_field || formData.academic_level) {
+    // 保存学术设置到用户存储
+    const academicSettings = {
+      academic_field: formData.academic_field,
+      academic_level: formData.academic_level
+    };
+    saveUserData('academicSettings', academicSettings);
+    console.log('已保存学术设置:', academicSettings);
   }
 };
 
@@ -416,6 +568,26 @@ const refineTopic = (topic: TopicResponse) => {
 </script>
 
 <style scoped>
+/* 加载已保存主题的样式 */
+.loading-saved-topics {
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+.loading-saved-topics .loading-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 15px;
+  color: #606266;
+}
+
+.loading-saved-topics .loading-text .el-icon {
+  margin-right: 10px;
+}
+
 .topic-recommend-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -470,8 +642,16 @@ const refineTopic = (topic: TopicResponse) => {
 
 .topic-title h3 {
   margin: 0;
-  font-size: 18px;
-  color: #303133;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.topic-timestamp {
+  margin-left: 10px;
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: #909399;
 }
 
 .topic-details {
@@ -541,9 +721,32 @@ const refineTopic = (topic: TopicResponse) => {
 
 .loading-text {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   margin-top: 20px;
+  color: #909399;
+}
+
+.loading-text > span {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  font-size: 16px;
+}
+
+.loading-tips {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+  font-size: 14px;
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.loading-tips p {
+  margin: 5px 0;
   color: #909399;
 }
 

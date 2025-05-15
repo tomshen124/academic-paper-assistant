@@ -18,6 +18,13 @@ export interface LoginResponse {
 }
 
 /**
+ * 刷新令牌请求参数
+ */
+export interface RefreshTokenRequest {
+  token: string;
+}
+
+/**
  * 用户信息
  */
 export interface UserInfo {
@@ -40,6 +47,19 @@ export function login(data: LoginRequest): Promise<LoginResponse> {
     url: '/auth/login/json',
     method: 'post',
     data
+  });
+}
+
+/**
+ * 刷新令牌
+ * @param token 当前令牌
+ * @returns 新令牌
+ */
+export function refreshToken(token: string): Promise<LoginResponse> {
+  return request({
+    url: '/auth/refresh',
+    method: 'post',
+    data: { token }
   });
 }
 

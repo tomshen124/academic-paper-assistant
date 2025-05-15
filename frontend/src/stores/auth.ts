@@ -4,6 +4,7 @@ import { login, getUserInfo, register } from '@/api/modules/auth';
 import type { LoginRequest, UserInfo, RegisterRequest } from '@/api/modules/auth';
 import { ElMessage } from 'element-plus';
 import router from '@/router';
+import { clearAllUserData, migrateExistingData, migrateDataFromAnonymous } from '@/utils/userStorage';
 
 export const useAuthStore = defineStore('auth', () => {
   // 状态
@@ -16,6 +17,15 @@ export const useAuthStore = defineStore('auth', () => {
     const storedUserInfo = localStorage.getItem('userInfo');
     if (storedUserInfo) {
       userInfo.value = JSON.parse(storedUserInfo);
+      
+      // 迁移已有的数据到用户特定存储
+      migrateExistingData([
+        'selectedTopic', 
+        'topicsHistory', 
+        'selectedOutline',
+        'savedSections',
+        'savedPaper'
+      ]);
     } else if (token.value) {
       // 如果有token但没有用户信息，则获取用户信息
       await fetchUserInfo();
@@ -55,10 +65,28 @@ export const useAuthStore = defineStore('auth', () => {
 
       token.value = response.access_token;
       localStorage.setItem('token', token.value);
-
+      
+      // 在登录前保存匿名标识
+      const anonymousId = localStorage.getItem('anonymousId');
+      
       // 获取用户信息
       await fetchUserInfo();
-
+      
+      // 登录成功后进行数据迁移
+      if (anonymousId) {
+        console.log('从匿名识别符迁移数据:', anonymousId);
+        migrateDataFromAnonymous(anonymousId);
+      }
+      
+      // 迁移传统存储中的数据
+      migrateExistingData([
+        'selectedTopic', 
+        'topicsHistory', 
+        'selectedOutline',
+        'savedSections',
+        'savedPaper'
+      ]);
+      
       ElMessage.success('登录成功');
       router.push('/');
       return true;
@@ -91,6 +119,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   // 登出
   const logout = () => {
+    // 在清除用户信息前清除用户特定数据
+    clearAllUserData();
+    
     token.value = null;
     userInfo.value = null;
     localStorage.removeItem('token');

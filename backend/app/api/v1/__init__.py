@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .endpoints import topics, outlines, papers, citations, search, agents, tokens, mcp, auth, users, interests
+from .endpoints import topics, outlines, papers, citations, search, agents, tokens, mcp, mcp_external, auth, users, interests, translation
 
 api_router = APIRouter()
 
@@ -17,9 +17,11 @@ async def api_root():
             "agents": "/agents",
             "tokens": "/tokens",
             "mcp": "/mcp",
+            "mcp_external": "/mcp-external",
             "auth": "/auth",
             "users": "/users",
-            "interests": "/interests"
+            "interests": "/interests",
+            "translation": "/translation"
         }
     }
 
@@ -47,6 +49,9 @@ api_router.include_router(tokens.router, prefix="/tokens", tags=["tokens"])
 # MCP相关路由
 api_router.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
 
+# 外部MCP服务器相关路由
+api_router.include_router(mcp_external.router, prefix="/mcp-external", tags=["mcp_external"])
+
 # 认证相关路由
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 
@@ -55,6 +60,9 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 
 # 兴趣分析相关路由
 api_router.include_router(interests.router, prefix="/interests", tags=["interests"])
+
+# 翻译相关路由
+api_router.include_router(translation.router, prefix="/translation", tags=["translation"])
 
 # 导出路由器供主应用使用
 __all__ = ["api_router"]

@@ -6,7 +6,8 @@ import type {
   OutlineTemplateRequest,
   OutlineTemplate,
   OutlineValidationRequest,
-  OutlineValidationResponse
+  OutlineValidationResponse,
+  UserOutlinesResponse
 } from '@/types/outlines';
 
 /**
@@ -54,5 +55,28 @@ export function validateOutline(data: OutlineValidationRequest) {
     url: '/outlines/validate',
     method: 'post',
     data
+  });
+}
+
+/**
+ * 获取用户提纲列表
+ * @param skip 跳过数量
+ * @param limit 限制数量
+ */
+export function getUserOutlines(skip: number = 0, limit: number = 100) {
+  return request<UserOutlinesResponse>({
+    url: `/outlines?skip=${skip}&limit=${limit}`,
+    method: 'get'
+  });
+}
+
+/**
+ * 根据ID获取提纲
+ * @param id 提纲ID
+ */
+export function getOutlineById(id: number) {
+  return request<OutlineResponse>({
+    url: `/outlines/${id}`,
+    method: 'get'
   });
 }

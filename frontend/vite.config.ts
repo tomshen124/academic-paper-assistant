@@ -32,10 +32,6 @@ export default defineConfig(({ command, mode }) => {
       preprocessorOptions: {
         scss: {
           additionalData: `@use "@/styles/variables.scss" as *;`,
-          sassOptions: {
-            outputStyle: 'expanded',
-            sourceMap: true
-          }
         },
       },
     },
@@ -48,7 +44,7 @@ export default defineConfig(({ command, mode }) => {
         '/api/v1': {
           target: env.VITE_API_TARGET || 'http://localhost:8000',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/v1/, ''),
+          rewrite: (path) => path.replace(/^\/api\/v1/, '/api/v1'),
         }
       }
     },

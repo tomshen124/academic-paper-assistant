@@ -99,3 +99,31 @@ export interface TopicRefinementResponse {
   /** 相比原主题的改进之处 */
   improvements: string;
 }
+
+/**
+ * 用户主题列表响应
+ */
+export interface UserTopicItem {
+  /** 主题ID */
+  id: number;
+  /** 主题标题 */
+  title: string;
+  /** 学术领域 */
+  academic_field: string;
+  /** 学术级别 */
+  academic_level: string;
+  /** 创建时间 */
+  created_at: string;
+  /** 更新时间 */
+  updated_at: string;
+}
+
+/**
+ * 用户主题列表响应
+ */
+export interface UserTopicsResponse {
+  /** 主题列表 */
+  topics: UserTopicItem[];
+  /** 总数 */
+  total: number;
+}

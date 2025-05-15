@@ -34,6 +34,7 @@
           <el-input
             v-model="formData.topic"
             placeholder="请输入论文主题"
+            @input="handleManualTopicInput"
           />
         </el-form-item>
 
@@ -61,11 +62,14 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item>
+        <div class="outline-form-actions">
           <el-button type="primary" :loading="loading" @click="submitForm">生成提纲</el-button>
           <el-button @click="resetForm">重置</el-button>
           <el-button type="info" @click="getTemplates">查看提纲模板</el-button>
-        </el-form-item>
+          <el-button type="success" @click="savedOutlinesDialogVisible = true" :disabled="savedOutlines.length === 0">
+            浏览已保存提纲 <el-badge v-if="savedOutlines.length > 0" :value="savedOutlines.length" />
+          </el-button>
+        </div>
       </el-form>
     </el-card>
 
@@ -87,7 +91,7 @@
       <div class="outline-content">
         <div class="abstract-section">
           <h3>摘要</h3>
-          <p>{{ outline.abstract }}</p>
+          <translatable-content :original-content="outline.abstract" />
         </div>
 
         <div class="sections-container">
@@ -117,12 +121,14 @@
                   <div class="section-details">
                     <div v-if="data.purpose" class="section-purpose">
                       <h4>目的</h4>
-                      <p>{{ data.purpose }}</p>
+                      <translatable-content :original-content="data.purpose" />
                     </div>
                     <div v-if="data.content_points && data.content_points.length > 0" class="section-points">
                       <h4>内容要点</h4>
                       <ul>
-                        <li v-for="(point, i) in data.content_points" :key="i">{{ point }}</li>
+                        <li v-for="(point, i) in data.content_points" :key="i">
+                          <translatable-content :original-content="point" />
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -141,6 +147,7 @@
       </div>
     </el-card>
 
+    <!-- 提纲模板对话框 -->
     <el-dialog
       v-model="templatesDialogVisible"
       title="提纲模板"
@@ -176,15 +183,65 @@
         <el-empty description="暂无可用模板" />
       </div>
     </el-dialog>
+
+    <!-- 已保存提纲对话框 -->
+    <el-dialog
+      v-model="savedOutlinesDialogVisible"
+      title="已保存的提纲"
+      width="800px"
+    >
+      <div class="saved-outlines-container">
+        <div v-if="isLoadingSavedOutlines" class="loading-container">
+          <el-skeleton :rows="3" animated />
+        </div>
+
+        <div v-else-if="savedOutlines.length === 0" class="empty-outlines">
+          <el-empty description="暂无已保存的提纲" />
+        </div>
+
+        <div v-else class="saved-outlines-list">
+          <el-table :data="savedOutlines" style="width: 100%" stripe>
+            <el-table-column prop="title" label="提纲标题" min-width="200">
+              <template #default="{row}">
+                <div class="outline-title">
+                  {{ row.title || '未命名提纲' }}
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="topic" label="论文主题" min-width="150" />
+
+            <el-table-column prop="paper_type" label="论文类型" width="120" />
+
+            <el-table-column prop="created_at" label="创建时间" width="180">
+              <template #default="{row}">
+                {{ new Date(row.created_at).toLocaleString('zh-CN') }}
+              </template>
+            </el-table-column>
+
+            <el-table-column label="操作" width="150" fixed="right">
+              <template #default="{row}">
+                <el-button type="primary" size="small" @click="loadOutlineById(row.id); savedOutlinesDialogVisible = false">
+                  加载
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue';
+import { saveUserData, getUserData } from '@/utils/userStorage';
 import { ElMessage, FormInstance, ElMessageBox } from 'element-plus';
 import { useRouter, useRoute } from 'vue-router';
 import { InfoFilled } from '@element-plus/icons-vue';
-import { generateOutline, getOutlineTemplates } from '@/api/modules/outlines';
+import { generateOutline, getOutlineTemplates, getUserOutlines, getOutlineById } from '@/api/modules/outlines';
+import { translateContent } from '@/api/modules/translation';
+import TranslatableContent from '@/components/Translation/TranslatableContent.vue';
 import type { OutlineRequest, OutlineResponse, OutlineTemplate } from '@/types/outlines';
 import type { Section, SubSection } from '@/types/outlines';
 import type { TopicResponse } from '@/types/topics';
@@ -272,10 +329,89 @@ const paperLengths = [
 
 const formRef = ref<FormInstance>();
 const loading = ref(false);
+// 提纲数据
 const outline = ref<OutlineResponse | null>(null);
-const templates = ref<OutlineTemplate[]>([]);
+
+// 保存的提纲列表
+const savedOutlines = ref<any[]>([]);
+
+// 加载已保存的提纲状态
+const isLoadingSavedOutlines = ref(false);
+
+// 获取用户已保存的提纲
+const fetchSavedOutlines = async () => {
+  try {
+    isLoadingSavedOutlines.value = true;
+    const result = await getUserOutlines(0, 10); // 获取最新的10个提纲
+
+    if (result && Array.isArray(result) && result.length > 0) {
+      savedOutlines.value = result;
+      console.log('获取到已保存的提纲:', savedOutlines.value);
+      ElMessage.info(`已加载${savedOutlines.value.length}个已生成的提纲`);
+
+      // 如果本地没有已选择的提纲，但服务器有保存的提纲，可以浏览最近生成的提纲
+      if (!outline.value && savedOutlines.value.length > 0) {
+        const lastOutline = savedOutlines.value[0]; // 获取最新的提纲
+        const shouldLoadLastOutline = await ElMessageBox.confirm(
+          `发现您有一个最近生成的提纲："${lastOutline.title}"，是否要加载该提纲？`,
+          '加载已有提纲',
+          {
+            confirmButtonText: '是',
+            cancelButtonText: '否',
+            type: 'info',
+          }
+        ).catch(() => false);
+
+        if (shouldLoadLastOutline) {
+          loadOutlineById(lastOutline.id);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('获取已保存提纲失败:', error);
+  } finally {
+    isLoadingSavedOutlines.value = false;
+  }
+};
+
+// 根据ID加载提纲
+const loadOutlineById = async (outlineId: number) => {
+  if (!outlineId) return;
+
+  try {
+    loading.value = true;
+    const result = await getOutlineById(outlineId);
+    if (result) {
+      outline.value = result;
+
+      // 更新表单数据
+      if (result.topic) {
+        formData.topic = result.topic;
+      }
+      if (result.academic_field) {
+        formData.academic_field = result.academic_field;
+      }
+      if (result.paper_type) {
+        formData.paper_type = result.paper_type;
+      }
+
+      ElMessage.success(`已加载提纲: ${result.title || '未命名提纲'}`);
+    }
+  } catch (error) {
+    console.error('加载提纲失败:', error);
+    ElMessage.error('加载提纲失败，请稍后重试');
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 展示提纲模板对话框
 const templatesDialogVisible = ref(false);
+const templates = ref<OutlineTemplate[]>([]);
 const activeTemplate = ref<number[]>([0]);
+
+// 展示已保存提纲对话框
+const savedOutlinesDialogVisible = ref(false);
 
 // 选题相关状态
 const savedTopics = ref<Array<TopicResponse & { id: string }>>([]);
@@ -312,8 +448,10 @@ const formatSections = (sections: Section[]) => {
   });
 };
 
-// 从路由参数中获取主题
-onMounted(() => {
+// 加载保存的主题和提纲
+onMounted(async () => {
+  // 加载已保存的提纲
+  await fetchSavedOutlines();
   // 加载保存的所有选题
   loadSavedTopics();
 
@@ -323,61 +461,78 @@ onMounted(() => {
   }
 
   // 从本地存储中获取选中的主题
-  const selectedTopic = localStorage.getItem('selectedTopic');
+  const selectedTopic = getUserData<any>('selectedTopic');
   if (selectedTopic) {
     try {
-      const topic = JSON.parse(selectedTopic);
-      formData.topic = topic.title;
-      formData.academic_field = topic.academic_field || formData.academic_field;
-      formData.academic_level = topic.academic_level || formData.academic_level;
+      formData.topic = selectedTopic.title;
+      formData.academic_field = selectedTopic.academic_field || formData.academic_field;
+      formData.academic_level = selectedTopic.academic_level || formData.academic_level;
 
       // 如果该主题已经在保存的主题列表中，选中它
-      const existingTopic = savedTopics.value.find(t => t.title === topic.title);
+      const existingTopic = savedTopics.value.find(t => t.title === selectedTopic.title);
       if (existingTopic) {
         selectedTopicId.value = existingTopic.id;
       }
     } catch (error) {
       console.error('解析选中主题失败:', error);
     }
+  } else {
+    // 如果没有选中的主题，尝试从学术设置中加载
+    const academicSettings = getUserData<{academic_field: string; academic_level: string}>('academicSettings');
+    if (academicSettings) {
+      if (academicSettings.academic_field) {
+        formData.academic_field = academicSettings.academic_field;
+      }
+      if (academicSettings.academic_level) {
+        formData.academic_level = academicSettings.academic_level;
+      }
+      console.log('已加载学术设置:', academicSettings);
+    }
   }
 });
 
-// 加载保存的所有选题
+// 从用户存储中加载保存的所有选题
 const loadSavedTopics = () => {
-  const topicsHistory = localStorage.getItem('topicsHistory');
+  // 从历史记录中加载
+  const topicsHistory = getUserData<any[]>('topicsHistory');
   if (topicsHistory) {
-    try {
-      savedTopics.value = JSON.parse(topicsHistory);
-    } catch (error) {
-      console.error('解析选题历史失败:', error);
-      savedTopics.value = [];
-    }
+    savedTopics.value = topicsHistory;
   } else {
     savedTopics.value = [];
   }
 
   // 如果有选中的主题但不在历史中，添加到历史
-  const selectedTopic = localStorage.getItem('selectedTopic');
+  const selectedTopic = getUserData<any>('selectedTopic');
   if (selectedTopic) {
-    try {
-      const topic = JSON.parse(selectedTopic);
-      const exists = savedTopics.value.some(t => t.title === topic.title);
+    console.log('从本地存储加载的选中主题:', selectedTopic);
 
-      if (!exists) {
-        // 生成唯一ID
-        const id = `topic-${Date.now()}`;
-        savedTopics.value.push({
-          ...topic,
-          id
-        });
+    // 检查是否已存在相同标题的主题
+    const existingTopic = savedTopics.value.find(t => t.title === selectedTopic.title);
 
-        // 保存到本地存储
-        localStorage.setItem('topicsHistory', JSON.stringify(savedTopics.value));
-      }
-    } catch (error) {
-      console.error('处理选中主题失败:', error);
+    if (existingTopic) {
+      // 如果存在，使用现有主题的ID
+      console.log('找到匹配的主题:', existingTopic);
+      selectedTopicId.value = existingTopic.id;
+    } else {
+      // 如果不存在，添加到历史记录
+      // 确保主题有ID
+      const topicId = selectedTopic.id || `topic-${Date.now()}`;
+      const newTopic = {
+        ...selectedTopic,
+        id: topicId
+      };
+
+      savedTopics.value.push(newTopic);
+      selectedTopicId.value = topicId;
+
+      // 保存到用户存储
+      saveUserData('topicsHistory', savedTopics.value);
+      console.log('添加新主题到历史记录:', newTopic);
     }
   }
+
+  console.log('加载到的主题列表:', savedTopics.value);
+  console.log('当前选中的主题ID:', selectedTopicId.value);
 };
 
 // 处理选题变化
@@ -424,8 +579,8 @@ const updateFormWithTopic = (topic: TopicResponse & { id: string }) => {
     formData.academic_level = topic.academic_level;
   }
 
-  // 将选中的主题保存到本地存储
-  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+  // 将选中的主题保存到用户存储
+  saveUserData('selectedTopic', topic);
   ElMessage.success(`已选择主题: ${topic.title}`);
 };
 
@@ -433,6 +588,24 @@ const updateFormWithTopic = (topic: TopicResponse & { id: string }) => {
 const clearSelectedTopic = () => {
   selectedTopicId.value = '';
   // 不清除表单中的主题，只清除选择
+};
+
+// 处理手动输入主题
+const handleManualTopicInput = () => {
+  // 当用户手动输入主题时，清除选中的主题ID
+  if (selectedTopicId.value) {
+    selectedTopicId.value = '';
+  }
+
+  // 创建一个新的主题对象，包含当前输入的主题和学术设置
+  const manualTopic = {
+    title: formData.topic,
+    academic_field: formData.academic_field,
+    academic_level: formData.academic_level
+  };
+
+  // 保存到用户存储
+  saveUserData('manualTopic', manualTopic);
 };
 
 // 前往主题推荐页面
@@ -448,8 +621,38 @@ const submitForm = async () => {
     if (valid) {
       loading.value = true;
       try {
+        // 如果是手动输入的主题，保存到manualTopic
+        if (!selectedTopicId.value) {
+          const manualTopic = {
+            title: formData.topic,
+            academic_field: formData.academic_field,
+            academic_level: formData.academic_level
+          };
+          saveUserData('manualTopic', manualTopic);
+        }
+
+        // 保存学术设置
+        const academicSettings = {
+          academic_field: formData.academic_field,
+          academic_level: formData.academic_level
+        };
+        saveUserData('academicSettings', academicSettings);
+
         const result = await generateOutline(formData);
         outline.value = result;
+
+        // 将生成的提纲与表单数据关联
+        const outlineWithFormData = {
+          ...result,
+          topic: formData.topic,
+          academic_field: formData.academic_field,
+          academic_level: formData.academic_level,
+          paper_type: formData.paper_type
+        };
+
+        // 保存到用户存储
+        saveUserData('currentOutline', outlineWithFormData);
+
         ElMessage.success('提纲生成成功');
       } catch (error) {
         console.error('生成提纲失败:', error);
@@ -510,8 +713,33 @@ const applyTemplate = (template: OutlineTemplate) => {
 const useOutline = () => {
   if (!outline.value) return;
 
-  // 将提纲存储到本地存储或状态管理中
-  localStorage.setItem('selectedOutline', JSON.stringify(outline.value));
+  // 将提纲存储到用户存储，并添加学术领域和学术级别
+  const outlineWithSettings = {
+    ...outline.value,
+    topic: formData.topic, // 确保包含主题
+    academic_field: formData.academic_field,
+    academic_level: formData.academic_level,
+    paper_type: formData.paper_type
+  };
+  saveUserData('selectedOutline', outlineWithSettings);
+
+  // 同时更新学术设置
+  const academicSettings = {
+    academic_field: formData.academic_field,
+    academic_level: formData.academic_level
+  };
+  saveUserData('academicSettings', academicSettings);
+
+  // 如果是手动输入的主题，也保存到manualTopic
+  if (!selectedTopicId.value) {
+    const manualTopic = {
+      title: formData.topic,
+      academic_field: formData.academic_field,
+      academic_level: formData.academic_level
+    };
+    saveUserData('manualTopic', manualTopic);
+  }
+
   ElMessage.success('已选择此提纲');
 
   // 导航到论文生成页面

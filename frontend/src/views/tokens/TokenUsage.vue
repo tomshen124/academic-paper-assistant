@@ -96,6 +96,24 @@
               </div>
             </el-tab-pane>
 
+            <el-tab-pane label="按任务类型统计" name="task_type">
+              <div class="chart-container">
+                <h4>任务类型使用情况</h4>
+                <div class="task-type-stats">
+                  <el-table :data="taskTypeStats" style="width: 100%">
+                    <el-table-column prop="task_type" label="任务类型" />
+                    <el-table-column prop="total_tokens" label="总Token数" />
+                    <el-table-column prop="requests" label="请求数" />
+                    <el-table-column prop="estimated_cost" label="估算成本">
+                      <template #default="scope">
+                        ${{ formatCost(scope.row.estimated_cost) }}
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </div>
+            </el-tab-pane>
+
             <el-tab-pane label="按日期统计" name="day">
               <div class="chart-container">
                 <h4>日期使用情况</h4>
@@ -135,6 +153,7 @@
                     <el-table-column prop="model" label="模型" />
                     <el-table-column prop="service" label="服务" />
                     <el-table-column prop="task" label="任务" />
+                    <el-table-column prop="task_type" label="任务类型" />
                     <el-table-column prop="total_tokens" label="总Token数" />
                     <el-table-column prop="estimated_cost" label="估算成本">
                       <template #default="scope">
@@ -227,6 +246,7 @@
                     <el-table-column prop="model" label="模型" />
                     <el-table-column prop="service" label="服务" />
                     <el-table-column prop="task" label="任务" />
+                    <el-table-column prop="task_type" label="任务类型" />
                     <el-table-column prop="total_tokens" label="总Token数" />
                     <el-table-column prop="estimated_cost" label="估算成本">
                       <template #default="scope">
@@ -295,6 +315,15 @@ const dayStats = computed(() => {
 
   return Object.entries(usageData.value.summary.by_day).map(([day, stats]) => ({
     day,
+    ...stats
+  }));
+});
+
+const taskTypeStats = computed(() => {
+  if (!usageData.value || !usageData.value.summary.by_task_type) return [];
+
+  return Object.entries(usageData.value.summary.by_task_type).map(([task_type, stats]) => ({
+    task_type,
     ...stats
   }));
 });

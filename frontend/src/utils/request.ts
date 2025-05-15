@@ -1,21 +1,43 @@
 import axios from 'axios'
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import { ElMessage } from 'element-plus'
+import { isTokenExpired, refreshTokenIfNeeded } from './tokenUtils'
 
 // 创建axios实例
 const service: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_APP_API_BASE_URL || 'http://localhost:8000/api/v1',
-  timeout: 60000 // 增加超时时间，因为LLM请求可能需要较长时间
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
+  timeout: 120000, // 增加超时时间到120秒，因为LLM请求可能需要较长时间
+  withCredentials: true // 允许跨域请求携带凭证
 })
 
 // 请求拦截器
 service.interceptors.request.use(
-  (config) => {
+  async (config) => {
     // 添加token认证信息
-    const token = localStorage.getItem('token')
-    if (token && config.headers) {
-      config.headers['Authorization'] = `Bearer ${token}`
+    let token = localStorage.getItem('token')
+
+    // 如果有token，检查是否需要刷新
+    if (token) {
+      // 排除刷新令牌的请求，避免无限循环
+      if (config.url !== '/auth/refresh') {
+        try {
+          // 检查令牌是否即将过期
+          if (isTokenExpired(token, 5)) { // 5分钟内过期则刷新
+            console.log('令牌即将过期，尝试刷新')
+            token = await refreshTokenIfNeeded(token)
+          }
+        } catch (error) {
+          console.error('刷新令牌失败:', error)
+          // 如果刷新失败，继续使用原令牌
+        }
+      }
+
+      // 设置认证头
+      if (config.headers) {
+        config.headers['Authorization'] = `Bearer ${token}`
+      }
     }
+
     return config
   },
   (error) => {

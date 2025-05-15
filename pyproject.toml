@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edu-kg"
+version = "0.1.0"
+description = "学术论文辅助平台"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+dependencies = [
+    # Web框架
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.8.0",
+    "python-multipart>=0.0.20",
+    "email-validator>=2.1.0",
+    "starlette>=0.46.0",
+    "jinja2>=3.1.6",
+
+    # 数据库
+    "sqlalchemy>=2.0.40",
+    "alembic>=1.15.0",
+    "psycopg2-binary>=2.9.10",
+
+    # 缓存
+    "redis>=5.2.0",
+
+    # 认证和安全
+    "python-jose>=3.3.0",
+    "passlib>=1.7.4",
+    "bcrypt>=4.0.0",
+
+    # HTTP客户端
+    "httpx>=0.26.0",
+    "requests>=2.32.0",
+
+    # 异步支持
+    "asyncio>=3.4.3",
+    "websockets>=12.0.0",
+
+    # LLM和AI
+    "litellm>=1.66.0",
+    "tiktoken>=0.9.0",
+    "tenacity>=9.1.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.3.0",
+
+    # 学术搜索
+    "arxiv>=2.2.0",
+    "scholarly>=1.7.0",
+
+    # 任务队列
+    "celery>=5.3.0",
+
+    # 工具和实用程序
+    "pyyaml>=6.0.0",
+    "python-dotenv>=1.1.0",
+    "loguru>=0.7.0",
+    "orjson>=3.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=23.12.0",
+    "flake8>=7.0.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.setuptools]
+packages = ["backend"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+python_classes = "Test*"

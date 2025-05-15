@@ -168,6 +168,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Token管理' }
       },
 
+      // MCP外部连接器路由
+      {
+        path: '/mcp-external',
+        name: 'MCPExternal',
+        component: () => import('@/views/mcp/ExternalConnector.vue'),
+        meta: { title: '外部MCP服务器连接' }
+      },
+
       // 用户相关路由
       {
         path: '/profile',

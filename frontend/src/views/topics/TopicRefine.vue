@@ -117,6 +117,7 @@ import { ElMessage, FormInstance } from 'element-plus';
 import { useRouter, useRoute } from 'vue-router';
 import { Right } from '@element-plus/icons-vue';
 import { refineTopic } from '@/api/modules/topics';
+import { saveUserData, getUserData } from '@/utils/userStorage';
 import type { TopicRefinementRequest, TopicRefinementResponse } from '@/types/topics';
 
 const router = useRouter();
@@ -188,14 +189,13 @@ onMounted(() => {
     formData.topic = decodeURIComponent(topicParam as string);
   }
 
-  // 从本地存储中获取选中的主题
-  const selectedTopic = localStorage.getItem('selectedTopic');
+  // 从用户存储中获取选中的主题
+  const selectedTopic = getUserData<any>('selectedTopic');
   if (selectedTopic && !formData.topic) {
     try {
-      const topic = JSON.parse(selectedTopic);
-      formData.topic = topic.title;
-      formData.academic_field = topic.academic_field;
-      formData.academic_level = topic.academic_level;
+      formData.topic = selectedTopic.title;
+      formData.academic_field = selectedTopic.academic_field;
+      formData.academic_level = selectedTopic.academic_level;
     } catch (error) {
       console.error('解析选中主题失败:', error);
     }
@@ -233,17 +233,8 @@ const resetForm = () => {
 
 // 将主题保存到历史记录
 const saveTopicToHistory = (topic: any) => {
-  // 从本地存储中获取历史记录
-  let topicsHistory: Array<any> = [];
-  const historyStr = localStorage.getItem('topicsHistory');
-
-  if (historyStr) {
-    try {
-      topicsHistory = JSON.parse(historyStr);
-    } catch (error) {
-      console.error('解析主题历史记录失败:', error);
-    }
-  }
+  // 从用户存储中获取历史记录
+  let topicsHistory = getUserData<any[]>('topicsHistory') || [];
 
   // 检查主题是否已存在
   const exists = topicsHistory.some(t => t.title === topic.title);
@@ -261,8 +252,8 @@ const saveTopicToHistory = (topic: any) => {
       topicsHistory.shift();
     }
 
-    // 保存到本地存储
-    localStorage.setItem('topicsHistory', JSON.stringify(topicsHistory));
+    // 保存到用户存储
+    saveUserData('topicsHistory', topicsHistory);
   }
 };
 
@@ -280,8 +271,8 @@ const useRefinedTopic = () => {
     scope: refinedTopic.value.scope || ''
   };
 
-  // 将优化后的主题存储到本地存储
-  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+  // 将优化后的主题存储到用户存储
+  saveUserData('selectedTopic', topic);
 
   // 保存到主题历史记录
   saveTopicToHistory(topic);
@@ -315,8 +306,8 @@ const generateOutline = () => {
     scope: refinedTopic.value.scope || ''
   };
 
-  // 将优化后的主题存储到本地存储
-  localStorage.setItem('selectedTopic', JSON.stringify(topic));
+  // 将优化后的主题存储到用户存储
+  saveUserData('selectedTopic', topic);
 
   // 保存到主题历史记录
   saveTopicToHistory(topic);

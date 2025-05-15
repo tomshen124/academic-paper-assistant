@@ -74,66 +74,40 @@ class TopicService:
 
             logger.info("开始多智能体协作推荐主题")
 
-            # 1. 研究智能体分析研究趋势和用户兴趣
-            logger.info("第一步: 研究智能体分析研究趋势和用户兴趣")
-            research_analysis = await agent_coordinator.run_agent(
-                "research",
-                "analyze_research_trends",
+            # 使用预设工作流
+            workflow_result = await agent_coordinator.execute_predefined_workflow(
+                "topic_recommendation",
                 {
                     "user_interests": user_interests,
                     "academic_field": academic_field,
                     "academic_level": academic_level,
-                    "research_trends": json.dumps(trends, ensure_ascii=False)
+                    "research_trends": trends,
+                    "topic_count": topic_count
                 }
             )
 
-            if not research_analysis:
-                logger.error("研究智能体分析失败")
-                # 如果智能体协作失败，回退到原始方法
+            # 检查工作流执行结果
+            if "error" in workflow_result:
+                logger.error(f"工作流执行失败: {workflow_result['error']}")
+                # 如果工作流执行失败，回退到原始方法
                 return await self._fallback_recommend_topics(user_interests, academic_field, academic_level, trends, topic_count, interest_analysis)
 
-            logger.info(f"研究分析完成: {json.dumps(research_analysis, ensure_ascii=False)[:100]}...")
+            # 从最终上下文中获取主题
+            final_context = workflow_result.get("final_context", {})
 
-            # 2. 写作智能体生成主题建议
-            logger.info("第二步: 写作智能体生成主题建议")
-            topic_suggestions = await agent_coordinator.run_agent(
-                "writing",
-                "generate_topic_suggestions",
-                {
-                    "research_analysis": json.dumps(research_analysis, ensure_ascii=False),
-                    "user_interests": user_interests,
-                    "academic_field": academic_field,
-                    "academic_level": academic_level
-                }
-            )
-
-            if not topic_suggestions or "topic_suggestions" not in topic_suggestions:
-                logger.error("写作智能体生成主题建议失败")
-                # 如果智能体协作失败，回退到原始方法
+            # 尝试从不同的可能位置获取主题
+            if "topics" in final_context:
+                final_topics = final_context["topics"]
+            elif "refine_topics_result" in final_context and "topics" in final_context["refine_topics_result"]:
+                final_topics = final_context["refine_topics_result"]["topics"]
+            elif "topic_suggestions" in final_context and "topic_suggestions" in final_context["topic_suggestions"]:
+                final_topics = final_context["topic_suggestions"]["topic_suggestions"]
+            else:
+                logger.error("无法从工作流结果中获取主题")
+                # 如果无法获取主题，回退到原始方法
                 return await self._fallback_recommend_topics(user_interests, academic_field, academic_level, trends, topic_count, interest_analysis)
 
-            logger.info(f"生成了 {len(topic_suggestions.get('topic_suggestions', []))} 个主题建议")
-
-            # 3. 编辑智能体评估和优化主题
-            logger.info("第三步: 编辑智能体评估和优化主题")
-            final_topics_result = await agent_coordinator.run_agent(
-                "editing",
-                "refine_topics",
-                {
-                    "topic_suggestions": json.dumps(topic_suggestions, ensure_ascii=False),
-                    "user_interests": user_interests,
-                    "academic_field": academic_field,
-                    "academic_level": academic_level
-                }
-            )
-
-            if not final_topics_result or "topics" not in final_topics_result:
-                logger.error("编辑智能体评估和优化主题失败")
-                # 如果智能体协作失败，回退到原始方法
-                return await self._fallback_recommend_topics(user_interests, academic_field, academic_level, trends, topic_count, interest_analysis)
-
-            final_topics = final_topics_result.get("topics", [])
-            logger.info(f"最终生成了 {len(final_topics)} 个优化主题")
+            logger.info(f"工作流执行完成，生成了 {len(final_topics)} 个主题，耗时: {workflow_result.get('execution_time', 0):.2f}秒")
 
             return final_topics
 
@@ -527,9 +501,28 @@ class TopicService:
 
             # 获取研究趋势
             try:
+                # 不直接传递academic_search_service对象，而是调用其方法
                 trends = await self.academic_search_service.get_research_trends(academic_field)
+                # 确保trends是可序列化的对象
+                if not isinstance(trends, (list, dict)):
+                    logger.warning(f"研究趋势不是可序列化的对象类型: {type(trends)}")
+                    trends = []
+
+                # 创建一个新的可序列化列表，避免引用可能包含不可序列化对象
+                serializable_trends = []
+                for trend in trends:
+                    if isinstance(trend, dict):
+                        serializable_trend = {
+                            "title": str(trend.get("title", "")),
+                            "abstract": str(trend.get("abstract", ""))[:300],
+                            "year": str(trend.get("year", "")),
+                            "url": str(trend.get("url", "")),
+                            "citations": int(trend.get("citations", 0))
+                        }
+                        serializable_trends.append(serializable_trend)
+
                 # 使用安全序列化函数
-                trends_json = safe_dumps(trends, ensure_ascii=False, default_value="[]")
+                trends_json = safe_dumps(serializable_trends, ensure_ascii=False, default_value="[]")
                 logger.info(f"成功获取研究趋势并序列化")
             except Exception as e:
                 logger.error(f"获取研究趋势失败: {str(e)}")
@@ -583,11 +576,12 @@ class TopicService:
                     {"role": "user", "content": f"请生成第 {i+1} 个主题"}
                 ]
 
-                # 调用LLM
+                # 调用LLM，使用主题智能体
                 response = await self.llm_service.acompletion(
                     messages=messages,
                     max_tokens=1000,
-                    temperature=0.7
+                    temperature=0.7,
+                    agent_type="topic"  # 使用主题推荐智能体
                 )
 
                 # 解析响应

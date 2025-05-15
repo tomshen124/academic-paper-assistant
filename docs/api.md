@@ -30,6 +30,77 @@ HTTP状态码:
 
 ## API端点
 
+### 翻译API
+
+#### 翻译内容
+
+- **URL**: `/api/v1/translation`
+- **方法**: `POST`
+- **描述**: 翻译内容
+
+**请求体**:
+```json
+{
+  "content": "Deep learning has revolutionized medical image analysis.",
+  "source_lang": "en",
+  "target_lang": "zh-CN",
+  "is_academic": true
+}
+```
+
+**响应**:
+```json
+{
+  "translated_content": "深度学习已经彻底改变了医学图像分析。",
+  "source_lang": "en",
+  "target_lang": "zh-CN"
+}
+```
+
+#### 批量翻译
+
+- **URL**: `/api/v1/translation/batch`
+- **方法**: `POST`
+- **描述**: 批量翻译内容
+
+**请求体**:
+```json
+{
+  "items": [
+    {
+      "title": "Deep Learning in Medical Imaging",
+      "abstract": "This paper reviews recent advances in deep learning for medical image analysis."
+    },
+    {
+      "title": "Natural Language Processing for Clinical Text",
+      "abstract": "This study explores the application of NLP techniques to clinical documentation."
+    }
+  ],
+  "content_key": "abstract",
+  "source_lang": "en",
+  "target_lang": "zh-CN",
+  "is_academic": true
+}
+```
+
+**响应**:
+```json
+{
+  "translated_items": [
+    {
+      "title": "Deep Learning in Medical Imaging",
+      "abstract": "本文综述了深度学习在医学图像分析中的最新进展。"
+    },
+    {
+      "title": "Natural Language Processing for Clinical Text",
+      "abstract": "本研究探讨了自然语言处理技术在临床文档中的应用。"
+    }
+  ],
+  "source_lang": "en",
+  "target_lang": "zh-CN"
+}
+```
+
 ### 主题API
 
 #### 推荐论文主题

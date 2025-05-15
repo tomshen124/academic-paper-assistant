@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     ALIYUN_API_KEY: Optional[str] = Field(None, description="阿里云 API密钥")
     ALIYUN_API_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
+    # LLM 配置 - 智谱AI
+    ZHIPUAI_API_KEY: Optional[str] = Field(None, description="智谱AI API密钥")
+    ZHIPUAI_API_URL: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
     # LLM 配置 - 默认设置
     DEFAULT_MODEL: str = "deepseek-chat"
 

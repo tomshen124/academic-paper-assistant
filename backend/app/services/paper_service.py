@@ -14,8 +14,7 @@ class PaperService:
 
     def __init__(self):
         """初始化论文生成服务"""
-        self.llm_service = llm_service
-        self.academic_search_service = academic_search_service
+        # 使用全局服务实例
         logger.info("论文生成服务初始化完成")
 
     async def generate_paper_section(
@@ -23,15 +22,24 @@ class PaperService:
         topic: str,
         outline: Dict[str, Any],
         section_id: str,
-        literature: List[Dict[str, Any]] = None
+        literature: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """生成论文章节"""
         try:
             logger.info(f"生成论文章节: 主题={topic}, 章节ID={section_id}")
 
-            # 如果没有提供文献，则搜索相关文献
-            if not literature:
-                try:
+            # 处理相关文献
+            literature_data = None
+            try:
+                # 如果传入了文献，直接使用
+                if literature:
+                    logger.info(f"使用传入的文献数据，共{len(literature)}篇")
+                    literature_data = {
+                        "results": literature,
+                        "total": len(literature),
+                        "query": topic
+                    }
+                else:
                     # 获取章节标题
                     section_title = None
                     for section in outline.get("sections", []):
@@ -47,124 +55,286 @@ class PaperService:
                     search_query = f"{topic} {section_title}" if section_title else topic
 
                     # 搜索相关文献
-                    literature = await self.academic_search_service.search_academic_papers(search_query, limit=3)
+                    logger.info(f"搜索相关文献: {search_query}")
+                    try:
+                        # 优先使用arXiv搜索，不需要API密钥
+                        literature_data = await academic_search_service.search_academic_papers(
+                            query=search_query,
+                            limit=3,
+                            sources=["arxiv"]  # 明确指定使用arXiv
+                        )
+                        # 确保返回的是字典类型
+                        if not isinstance(literature_data, dict):
+                            logger.warning(f"搜索结果不是字典类型: {type(literature_data)}, 将使用空字典代替")
+                            literature_data = {"results": [], "total": 0, "query": search_query}
+                    except Exception as e:
+                        logger.error(f"搜索相关文献失败: {str(e)}")
+                        literature_data = {"results": [], "total": 0, "query": search_query}
 
-                    # 验证literature是否是可序列化的对象
-                    if not isinstance(literature, dict):
-                        logger.warning(f"搜索结果不是字典格式: {type(literature)}, 将使用空字典代替")
-                        literature = {"results": [], "total": 0, "query": search_query}
-                except Exception as e:
-                    logger.error(f"搜索相关文献失败: {str(e)}")
-                    literature = {"results": [], "total": 0, "query": topic}
+                # 验证literature是否是可序列化的对象
+                if literature_data is None or not isinstance(literature_data, dict):
+                    logger.warning(f"搜索结果为None或不是字典格式: {type(literature_data)}, 将使用空字典代替")
+                    literature_data = {"results": [], "total": 0, "query": search_query if 'search_query' in locals() else topic}
+                else:
+                    # 创建一个新的可序列化字典，避免引用可能包含不可序列化对象的原始字典
+                    serializable_data = {
+                        "results": [],
+                        "total": literature_data.get("total", 0),
+                        "query": literature_data.get("query", search_query if 'search_query' in locals() else topic)
+                    }
+
+                    # 确保结果列表中的每个论文对象都是可序列化的
+                    results = literature_data.get("results", [])
+                    if results and isinstance(results, list):
+                        for paper in results[:3]:  # 只使用前3篇文章
+                            if not isinstance(paper, dict):
+                                logger.warning(f"论文对象不是字典格式: {type(paper)}, 跳过")
+                                continue
+
+                            serializable_paper = {
+                                "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                                "authors": paper.get("authors", []) if isinstance(paper.get("authors"), list) else [],
+                                "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                                "abstract": str(paper.get("abstract", ""))[:300] if paper.get("abstract") is not None else "",  # 限制摘要长度
+                                "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                                "source": str(paper.get("source", "arxiv")) if paper.get("source") is not None else "arxiv"
+                            }
+                            serializable_data["results"].append(serializable_paper)
+                    else:
+                        logger.warning(f"搜索结果列表为空或不是列表类型: {type(results)}")
+
+                    literature_data = serializable_data
+            except Exception as e:
+                logger.error(f"处理相关文献失败: {str(e)}")
+                literature_data = {"results": [], "total": 0, "query": topic}
 
             # 找到对应的章节信息
             section_info = None
-            for section in outline.get("sections", []):
-                if section.get("id") == section_id:
-                    section_info = section
-                    break
-                for subsection in section.get("subsections", []):
-                    if subsection.get("id") == section_id:
-                        section_info = subsection
+            # 检查是否是子章节ID（包含'-'符号）
+            if '-' in section_id:
+                # 解析父章节ID和子章节ID
+                parent_id, sub_id = section_id.split('-', 1)
+                # 先找到父章节
+                for section in outline.get("sections", []):
+                    if section.get("id") == parent_id:
+                        # 在父章节的子章节中查找
+                        subsections = section.get("subsections", [])
+                        if not subsections:
+                            logger.warning(f"父章节 {parent_id} 没有子章节")
+                            # 创建一个基本的章节信息
+                            section_info = {
+                                "id": section_id,
+                                "title": f"子章节 {sub_id}",
+                                "content_points": ["自动生成的内容"]
+                            }
+                            break
+
+                        for subsection in subsections:
+                            if subsection.get("id") == section_id:
+                                section_info = subsection
+                                break
+
+                        # 如果没找到匹配的子章节ID，但找到了父章节，创建一个基本的子章节信息
+                        if not section_info:
+                            logger.warning(f"在父章节 {parent_id} 中未找到子章节 {section_id}")
+                            section_info = {
+                                "id": section_id,
+                                "title": f"子章节 {sub_id}",
+                                "content_points": ["自动生成的内容"]
+                            }
+                        break
+            else:
+                # 常规章节查找
+                for section in outline.get("sections", []):
+                    if section.get("id") == section_id:
+                        section_info = section
+                        break
+                    # 也在子章节中查找
+                    for subsection in section.get("subsections", []):
+                        if subsection.get("id") == section_id:
+                            section_info = subsection
+                            break
+                    if section_info:
                         break
 
+            # 如果仍然没有找到章节信息，创建一个基本的章节信息
             if not section_info:
                 logger.error(f"未找到章节信息: {section_id}")
-                return {"content": "未找到章节信息"}
+                section_info = {
+                    "id": section_id,
+                    "title": f"章节 {section_id}",
+                    "content_points": ["自动生成的内容"]
+                }
 
             # 构建提示
-            # 尝试将literature转换为JSON字符串
-            literature_json = safe_dumps(literature, ensure_ascii=False, max_length=1500, default_value="[]")
+            # 尝试将literature_data转换为JSON字符串
+            literature_json = safe_dumps(literature_data, ensure_ascii=False, max_length=1500, default_value="[]")
             logger.info(f"成功序列化相关文献")
+
+            # 确保section_info有content_points字段
+            if 'content_points' not in section_info or not section_info['content_points']:
+                section_info['content_points'] = ["自动生成的内容"]
 
             # 尝试将内容要点转换为JSON字符串
             content_points_json = safe_dumps(section_info.get('content_points', []), ensure_ascii=False, default_value="[]")
-            logger.info(f"成功序列化内容要点")
 
-            system_prompt = f"""你是一个学术论文写作专家。你的任务是为以下论文主题和章节生成高质量的学术内容。
+            # 构建提示
+            prompt = f"""
+            你是一位专业的学术论文撰写助手，现在需要你生成一篇论文的一个章节。
 
-论文主题: {topic}
-论文标题: {outline.get('title', topic)}
-章节ID: {section_id}
-章节标题: {section_info.get('title', '')}
-章节目的: {section_info.get('purpose', '')}
-内容要点: {content_points_json}
-预期长度: {section_info.get('expected_length', '')}
+            论文主题：{topic}
+            章节标题：{section_info.get('title', '未知章节')}
 
-相关文献:
-{literature_json}
+            章节内容要点：{content_points_json}
 
-请生成该章节的完整内容，要求:
-1. 内容符合学术写作规范，语言专业、准确
-2. 适当引用相关文献，使用(作者, 年份)的引用格式
-3. 内容要点全面覆盖，逻辑清晰
-4. 长度符合预期要求
-5. 如有必要，可以包含小标题划分内容
-6. 如果是方法或结果章节，可以描述适当的图表（但不需要实际创建图表）
+            相关文献：{literature_json}
 
-请直接返回章节内容，不需要额外的解释或格式。"""
+            请生成这个章节的详细内容，内容应当：
+            1. 学术风格严谨，用词专业
+            2. 逻辑结构清晰，有论证和分析
+            3. 适当引用相关文献支持论点
+            4. 符合章节内容要点的要求
+            5. 适当长度（约800-1200字）
 
-            # 调用LLM
-            response = await self.llm_service.acompletion(
-                messages=[{"role": "system", "content": system_prompt}],
-                max_tokens=2500,
-                temperature=0.4
-            )
+            仅返回章节内容，不需要包含标题。
+            """
 
-            # 获取响应内容
-            content = response.choices[0].message.content
+            # 使用智能体协调器生成章节内容
+            from app.services.agent_service import agent_coordinator
 
-            # 记录token使用
-            token_usage = response.usage
-            logger.info(
-                f"章节生成完成: ID={section_id}, "
-                f"输入tokens={token_usage.prompt_tokens}, "
-                f"输出tokens={token_usage.completion_tokens}, "
-                f"总tokens={token_usage.total_tokens}"
-            )
+            logger.info("使用智能体协调器生成章节内容")
 
-            return {
-                "section_id": section_id,
-                "title": section_info.get("title", ""),
-                "content": content,
-                "token_usage": {
-                    "prompt_tokens": token_usage.prompt_tokens,
-                    "completion_tokens": token_usage.completion_tokens,
-                    "total_tokens": token_usage.total_tokens
+            # 使用预设工作流
+            workflow_result = await agent_coordinator.execute_predefined_workflow(
+                "paper_section_generation",
+                {
+                    "topic": topic,
+                    "outline": outline,
+                    "section_id": section_id,
+                    "papers": literature_data.get("results", []) if literature_data else []
                 }
+            )
+
+            # 检查工作流执行结果
+            if "error" in workflow_result:
+                logger.error(f"工作流执行失败: {workflow_result['error']}")
+                # 如果工作流执行失败，回退到原始方法
+                response = await llm_service.generate_text(prompt, agent_type="writing")
+            else:
+                # 从最终上下文中获取章节内容
+                final_context = workflow_result.get("final_context", {})
+
+                # 尝试从不同的可能位置获取章节内容
+                if "section_content" in final_context:
+                    response = final_context["section_content"]
+                elif "polish_section_result" in final_context and "content" in final_context["polish_section_result"]:
+                    response = final_context["polish_section_result"]["content"]
+                elif "write_section_result" in final_context and "content" in final_context["write_section_result"]:
+                    response = final_context["write_section_result"]["content"]
+                else:
+                    logger.error("无法从工作流结果中获取章节内容，使用备用方法")
+                    # 如果无法获取章节内容，回退到原始方法
+                    response = await llm_service.generate_text(prompt, agent_type="writing")
+
+            # 计算token使用情况
+            token_usage = {
+                "prompt_tokens": len(prompt) // 4,  # 粗略估计
+                "completion_tokens": len(response) // 4,  # 粗略估计
+                "total_tokens": (len(prompt) + len(response)) // 4  # 粗略估计
             }
 
+            result = {
+                "section_id": section_id,
+                "title": section_info.get('title', '未知章节'),
+                "content": response,
+                "token_usage": token_usage
+            }
+
+            logger.info(f"章节生成完成: ID={section_id}, 标题={result['title']}")
+            return result
+
         except Exception as e:
-            logger.error(f"生成论文章节失败: {str(e)}")
+            logger.error(f"生成章节异常: {str(e)}")
             return {
                 "section_id": section_id,
-                "title": section_info.get("title", "") if section_info else "",
-                "content": f"生成失败: {str(e)}",
-                "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                "title": "生成失败",
+                "content": f"生成内容时发生错误: {str(e)}",
+                "token_usage": {"total_tokens": 0}
             }
 
     async def generate_full_paper(
         self,
         topic: str,
         outline: Dict[str, Any],
-        literature: List[Dict[str, Any]] = None
+        literature: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """生成完整论文"""
         try:
             logger.info(f"生成完整论文: 主题={topic}")
 
-            # 如果没有提供文献，则搜索相关文献
-            if not literature:
-                try:
-                    literature = await self.academic_search_service.search_academic_papers(topic, limit=10)
+            # 处理相关文献
+            literature_data = None
+            try:
+                # 如果传入了文献，直接使用
+                if literature:
+                    logger.info(f"使用传入的文献数据，共{len(literature)}篇")
+                    literature_data = {
+                        "results": literature,
+                        "total": len(literature),
+                        "query": topic
+                    }
+                else:
+                    # 搜索学术论文
+                    logger.info(f"搜索相关文献: {topic}")
+                    try:
+                        # 优先使用arXiv搜索，不需要API密钥
+                        search_results = await academic_search_service.search_academic_papers(
+                            query=topic,
+                            limit=10,
+                            sources=["arxiv"]  # 明确指定使用arXiv
+                        )
+                        # 确保返回的是字典类型
+                        if not isinstance(search_results, dict):
+                            logger.warning(f"搜索结果不是字典类型: {type(search_results)}, 将使用空字典代替")
+                            search_results = {"results": [], "total": 0, "query": topic}
+                    except Exception as e:
+                        logger.error(f"搜索相关文献失败: {str(e)}")
+                        search_results = {"results": [], "total": 0, "query": topic}
 
-                    # 验证literature是否是可序列化的对象
-                    if not isinstance(literature, dict):
-                        logger.warning(f"搜索结果不是字典格式: {type(literature)}, 将使用空字典代替")
-                        literature = {"results": [], "total": 0, "query": topic}
-                except Exception as e:
-                    logger.error(f"搜索相关文献失败: {str(e)}")
-                    literature = {"results": [], "total": 0, "query": topic}
+                    # 验证结果是否是可序列化的对象
+                    if search_results is None or not isinstance(search_results, dict):
+                        logger.warning(f"搜索结果为None或不是字典格式: {type(search_results)}, 将使用空字典代替")
+                        literature_data = {"results": [], "total": 0, "query": topic}
+                    else:
+                        # 创建一个新的可序列化字典，避免引用可能包含不可序列化对象的原始字典
+                        literature_data = {
+                            "results": [],
+                            "total": search_results.get("total", 0),
+                            "query": search_results.get("query", topic)
+                        }
+
+                        # 确保结果列表中的每个论文对象都是可序列化的
+                        results = search_results.get("results", [])
+                        if results and isinstance(results, list):
+                            for paper in results[:10]:  # 只使用前10篇文章
+                                if not isinstance(paper, dict):
+                                    logger.warning(f"论文对象不是字典格式: {type(paper)}, 跳过")
+                                    continue
+
+                                serializable_paper = {
+                                    "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                                    "authors": paper.get("authors", []) if isinstance(paper.get("authors"), list) else [],
+                                    "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                                    "abstract": str(paper.get("abstract", ""))[:300] if paper.get("abstract") is not None else "",  # 限制摘要长度
+                                    "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                                    "source": str(paper.get("source", "arxiv")) if paper.get("source") is not None else "arxiv"
+                                }
+                                literature_data["results"].append(serializable_paper)
+                        else:
+                            logger.warning(f"搜索结果列表为空或不是列表类型: {type(results)}")
+            except Exception as e:
+                logger.error(f"处理相关文献失败: {str(e)}")
+                literature_data = {"results": [], "total": 0, "query": topic}
 
             # 获取所有章节ID
             section_ids = []
@@ -176,8 +346,36 @@ class PaperService:
             # 并行生成所有章节
             tasks = []
             for section_id in section_ids:
-                task = self.generate_paper_section(topic, outline, section_id, literature)
+                # 确保section_id是有效的
+                if not section_id:
+                    logger.warning(f"跳过无效的章节ID: {section_id}")
+                    continue
+
+                # 传递literature_data对象
+                literature_results = []
+                if literature_data and isinstance(literature_data, dict):
+                    results = literature_data.get("results", [])
+                    if isinstance(results, list):
+                        literature_results = results
+
+                task = self.generate_paper_section(
+                    topic=topic,
+                    outline=outline,
+                    section_id=section_id,
+                    literature=literature_results
+                )
                 tasks.append(task)
+
+            # 如果没有有效的任务，返回空结果
+            if not tasks:
+                logger.warning("没有有效的章节ID，无法生成论文")
+                return {
+                    "title": outline.get("title", topic),
+                    "abstract": "无法生成论文，没有有效的章节",
+                    "keywords": outline.get("keywords", []),
+                    "sections": {},
+                    "token_usage": 0
+                }
 
             # 等待所有任务完成
             sections_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -191,7 +389,15 @@ class PaperService:
                     logger.error(f"章节生成异常: {str(result)}")
                     continue
 
+                if not isinstance(result, dict):
+                    logger.error(f"章节生成结果不是字典类型: {type(result)}")
+                    continue
+
                 section_id = result.get("section_id")
+                if not section_id:
+                    logger.error("章节生成结果缺少section_id字段")
+                    continue
+
                 sections[section_id] = {
                     "title": result.get("title", ""),
                     "content": result.get("content", "")
@@ -218,63 +424,62 @@ class PaperService:
 
         except Exception as e:
             logger.error(f"生成完整论文失败: {str(e)}")
-            return {"title": topic, "error": str(e)}
+            # 确保出错时也返回所有必需的字段
+            return {
+                "title": topic,
+                "error": str(e),
+                "abstract": "",
+                "keywords": [],
+                "sections": {},
+                "token_usage": 0
+            }
 
     async def generate_abstract(
         self,
         topic: str,
         outline: Dict[str, Any],
-        sections: Dict[str, Dict[str, Any]]
+        sections: Dict[str, Any]
     ) -> str:
         """生成论文摘要"""
         try:
             logger.info(f"生成论文摘要: 主题={topic}")
 
-            # 提取各章节的前100个字符作为摘要输入
-            sections_preview = {}
-            for section_id, section in sections.items():
-                content = section.get("content", "")
-                preview = content[:200] + "..." if len(content) > 200 else content
-                sections_preview[section_id] = {
-                    "title": section.get("title", ""),
-                    "preview": preview
-                }
+            # 提取各章节内容的前100个字符
+            sections_preview = []
+            for section_id, section_data in sections.items():
+                sections_preview.append(f"{section_data.get('title')}: {section_data.get('content', '')[:100]}...")
 
-            # 尝试将sections_preview转换为JSON字符串
-            sections_preview_json = safe_dumps(sections_preview, ensure_ascii=False, max_length=1500, default_value="{}")
-            logger.info(f"成功序列化章节概览")
+            # 将章节预览转换为字符串
+            sections_preview_text = "\n".join(sections_preview)
 
             # 构建提示
-            system_prompt = f"""你是一个学术论文摘要生成专家。你的任务是为以下论文生成一个简洁、全面的摘要。
+            prompt = f"""
+            你是一位专业的学术论文撰写助手，现在需要你为一篇论文生成摘要。
 
-论文主题: {topic}
-论文标题: {outline.get('title', topic)}
-论文章节概览: {sections_preview_json}
+            论文主题：{topic}
+            论文标题：{outline.get('title', topic)}
+            论文关键词：{', '.join(outline.get('keywords', []))}
 
-请生成一个200-300字的学术摘要，要求:
-1. 简明扼要地概述研究目的、方法、结果和结论
-2. 突出研究的创新点和贡献
-3. 语言专业、准确，符合学术写作规范
-4. 不包含引用
+            论文内容预览：
+            {sections_preview_text}
 
-请直接返回摘要内容，不需要额外的解释或格式。"""
+            请生成一个简洁但全面的学术摘要，摘要应当：
+            1. 包含研究目的、方法、主要发现和结论
+            2. 格式规范，语言精炼
+            3. 长度适中（约150-250字）
 
-            # 调用LLM
-            response = await self.llm_service.acompletion(
-                messages=[{"role": "system", "content": system_prompt}],
-                max_tokens=500,
-                temperature=0.3
-            )
+            仅返回摘要内容。
+            """
 
-            # 获取响应内容
-            abstract = response.choices[0].message.content
+            # 调用LLM生成摘要，使用写作智能体
+            abstract = await llm_service.generate_text(prompt, agent_type="writing")
 
             logger.info(f"摘要生成完成: 长度={len(abstract)}")
             return abstract
 
         except Exception as e:
-            logger.error(f"生成摘要失败: {str(e)}")
-            return "摘要生成失败"
+            logger.error(f"生成摘要异常: {str(e)}")
+            return f"摘要生成失败: {str(e)}"
 
     async def improve_section(
         self,
@@ -282,83 +487,167 @@ class PaperService:
         section_id: str,
         current_content: str,
         feedback: str,
-        literature: List[Dict[str, Any]] = None
+        literature: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """改进论文章节"""
         try:
             logger.info(f"改进论文章节: 主题={topic}, 章节ID={section_id}, 反馈={feedback}")
 
-            # 如果没有提供文献，则搜索相关文献
-            if not literature:
-                try:
-                    literature = await self.academic_search_service.search_academic_papers(topic, limit=3)
+            # 处理相关文献
+            literature_data = None
+            try:
+                # 如果传入了文献，直接使用
+                if literature:
+                    logger.info(f"使用传入的文献数据，共{len(literature)}篇")
+                    literature_data = {
+                        "results": literature,
+                        "total": len(literature),
+                        "query": topic
+                    }
+                else:
+                    # 搜索相关文献
+                    logger.info(f"搜索相关文献: {topic}")
+                    try:
+                        # 优先使用arXiv搜索，不需要API密钥
+                        literature_data = await academic_search_service.search_academic_papers(
+                            query=topic,
+                            limit=3,
+                            sources=["arxiv"]  # 明确指定使用arXiv
+                        )
+                        # 确保返回的是字典类型
+                        if not isinstance(literature_data, dict):
+                            logger.warning(f"搜索结果不是字典类型: {type(literature_data)}, 将使用空字典代替")
+                            literature_data = {"results": [], "total": 0, "query": topic}
+                    except Exception as e:
+                        logger.error(f"搜索相关文献失败: {str(e)}")
+                        literature_data = {"results": [], "total": 0, "query": topic}
 
-                    # 验证literature是否是可序列化的对象
-                    if not isinstance(literature, dict):
-                        logger.warning(f"搜索结果不是字典格式: {type(literature)}, 将使用空字典代替")
-                        literature = {"results": [], "total": 0, "query": topic}
-                except Exception as e:
-                    logger.error(f"搜索相关文献失败: {str(e)}")
-                    literature = {"results": [], "total": 0, "query": topic}
+                # 验证literature是否是可序列化的对象
+                if literature_data is None or not isinstance(literature_data, dict):
+                    logger.warning(f"搜索结果为None或不是字典格式: {type(literature_data)}, 将使用空字典代替")
+                    literature_data = {"results": [], "total": 0, "query": topic}
+                else:
+                    # 创建一个新的可序列化字典，避免引用可能包含不可序列化对象的原始字典
+                    serializable_data = {
+                        "results": [],
+                        "total": literature_data.get("total", 0),
+                        "query": literature_data.get("query", topic)
+                    }
 
-            # 尝试将literature转换为JSON字符串
-            literature_json = safe_dumps(literature, ensure_ascii=False, max_length=1000, default_value="[]")
+                    # 确保结果列表中的每个论文对象都是可序列化的
+                    results = literature_data.get("results", [])
+                    if results and isinstance(results, list):
+                        for paper in results[:3]:  # 只使用前3篇文章
+                            if not isinstance(paper, dict):
+                                logger.warning(f"论文对象不是字典格式: {type(paper)}, 跳过")
+                                continue
+
+                            serializable_paper = {
+                                "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                                "authors": paper.get("authors", []) if isinstance(paper.get("authors"), list) else [],
+                                "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                                "abstract": str(paper.get("abstract", ""))[:300] if paper.get("abstract") is not None else "",  # 限制摘要长度
+                                "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                                "source": str(paper.get("source", "arxiv")) if paper.get("source") is not None else "arxiv"
+                            }
+                            serializable_data["results"].append(serializable_paper)
+                    else:
+                        logger.warning(f"搜索结果列表为空或不是列表类型: {type(results)}")
+
+                    literature_data = serializable_data
+            except Exception as e:
+                logger.error(f"处理相关文献失败: {str(e)}")
+                literature_data = {"results": [], "total": 0, "query": topic}
+
+            # 尝试将literature_data转换为JSON字符串
+            literature_json = safe_dumps(literature_data, ensure_ascii=False, max_length=1500, default_value="[]")
             logger.info(f"成功序列化相关文献")
 
             # 构建提示
-            system_prompt = f"""你是一个学术论文编辑专家。你的任务是根据反馈改进以下论文章节。
+            prompt = f"""
+            你是一位专业的学术论文撰写助手，现在需要你改进一篇论文的章节内容。
 
-论文主题: {topic}
-章节ID: {section_id}
-当前内容:
-{current_content}
+            论文主题：{topic}
+            章节ID：{section_id}
 
-用户反馈:
-{feedback}
+            当前内容：
+            {current_content}
 
-相关文献:
-{literature_json}
+            用户反馈：
+            {feedback}
 
-请根据用户的反馈改进章节内容，要求:
-1. 保持学术写作风格和专业性
-2. 针对性地解决用户提出的问题
-3. 适当引用相关文献支持论点
-4. 保持内容的逻辑性和连贯性
+            相关文献：{literature_json}
 
-请直接返回改进后的章节内容，不需要额外的解释或格式。"""
+            请根据用户的反馈和相关文献，改进这个章节的内容。改进后的内容应当：
+            1. 解决用户反馈中提出的问题
+            2. 保持学术风格严谨，用词专业
+            3. 确保逻辑结构清晰，有论证和分析
+            4. 适当引用相关文献支持论点
+            5. 保持适当长度（约800-1200字）
 
-            # 调用LLM
-            response = await self.llm_service.acompletion(
-                messages=[{"role": "system", "content": system_prompt}],
-                max_tokens=2500,
-                temperature=0.3
-            )
+            仅返回改进后的完整章节内容，不需要包含标题或解释。
+            """
 
-            # 获取响应内容
-            improved_content = response.choices[0].message.content
+            # 使用智能体协调器改进章节内容
+            from app.services.agent_service import agent_coordinator
 
-            # 记录token使用
-            token_usage = response.usage
-            logger.info(
-                f"章节改进完成: ID={section_id}, "
-                f"输入tokens={token_usage.prompt_tokens}, "
-                f"输出tokens={token_usage.completion_tokens}, "
-                f"总tokens={token_usage.total_tokens}"
-            )
+            logger.info("使用智能体协调器改进章节内容")
 
-            return {
-                "section_id": section_id,
-                "improved_content": improved_content,
-                "token_usage": {
-                    "prompt_tokens": token_usage.prompt_tokens,
-                    "completion_tokens": token_usage.completion_tokens,
-                    "total_tokens": token_usage.total_tokens
+            # 使用预设工作流
+            workflow_result = await agent_coordinator.execute_predefined_workflow(
+                "paper_section_generation",
+                {
+                    "topic": topic,
+                    "section_id": section_id,
+                    "content": current_content,
+                    "feedback": feedback,
+                    "papers": literature_data.get("results", []) if literature_data else []
                 }
+            )
+
+            # 检查工作流执行结果
+            if "error" in workflow_result:
+                logger.error(f"工作流执行失败: {workflow_result['error']}")
+                # 如果工作流执行失败，回退到原始方法
+                improved_content = await llm_service.generate_text(prompt, agent_type="writing")
+            else:
+                # 从最终上下文中获取改进后的章节内容
+                final_context = workflow_result.get("final_context", {})
+
+                # 尝试从不同的可能位置获取章节内容
+                if "improved_content" in final_context:
+                    improved_content = final_context["improved_content"]
+                elif "polish_section_result" in final_context and "content" in final_context["polish_section_result"]:
+                    improved_content = final_context["polish_section_result"]["content"]
+                else:
+                    logger.error("无法从工作流结果中获取改进后的章节内容，使用备用方法")
+                    # 如果无法获取章节内容，回退到原始方法
+                    improved_content = await llm_service.generate_text(prompt, agent_type="writing")
+
+            # 计算token使用情况
+            token_usage = {
+                "prompt_tokens": len(prompt) // 4,  # 粗略估计
+                "completion_tokens": len(improved_content) // 4,  # 粗略估计
+                "total_tokens": (len(prompt) + len(improved_content)) // 4  # 粗略估计
             }
 
-        except Exception as e:
-            logger.error(f"改进论文章节失败: {str(e)}")
-            return {"section_id": section_id, "error": str(e)}
+            result = {
+                "section_id": section_id,
+                "improved_content": improved_content,
+                "token_usage": token_usage
+            }
 
-# 创建全局论文服务实例
+            logger.info(f"章节改进完成: ID={section_id}")
+            return result
+
+        except Exception as e:
+            logger.error(f"改进章节异常: {str(e)}")
+            return {
+                "section_id": section_id,
+                "improved_content": f"改进内容时发生错误: {str(e)}",
+                "token_usage": {"total_tokens": 0}
+            }
+
+
+# 创建单例实例
 paper_service = PaperService()

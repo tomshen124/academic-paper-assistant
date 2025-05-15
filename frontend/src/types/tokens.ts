@@ -64,6 +64,8 @@ export interface TokenUsageSummary {
   by_model: Record<string, TokenUsageStatistics>;
   /** 按服务统计 */
   by_service: Record<string, TokenUsageStatistics>;
+  /** 按任务统计 */
+  by_task: Record<string, TokenUsageStatistics>;
   /** 按日期统计 */
   by_day: Record<string, TokenUsageStatistics>;
   /** 运行时间(秒) */
@@ -100,15 +102,7 @@ export interface TokenUsageExportResponse {
   format: string;
 }
 
-/**
- * Token使用重置响应
- */
-export interface TokenUsageResetResponse {
-  /** 消息 */
-  message: string;
-  /** 之前的摘要 */
-  previous_summary: TokenUsageSummary;
-}
+
 
 /**
  * 用户Token使用记录
@@ -148,14 +142,51 @@ export interface UserTokenUsageSummary {
   };
   /** 按模型统计 */
   by_model: Record<string, {
+    prompt_tokens: number;
+    completion_tokens: number;
     total_tokens: number;
     estimated_cost: number;
     requests: number;
   }>;
   /** 按服务统计 */
   by_service: Record<string, {
+    prompt_tokens: number;
+    completion_tokens: number;
     total_tokens: number;
     estimated_cost: number;
     requests: number;
   }>;
+  /** 按任务统计 */
+  by_task: Record<string, {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    estimated_cost: number;
+    requests: number;
+  }>;
+  /** 按日期统计 */
+  by_day: Record<string, {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    estimated_cost: number;
+    requests: number;
+  }>;
+  /** 过滤条件 */
+  filter?: {
+    start_date?: string;
+    end_date?: string;
+  };
+}
+
+/**
+ * Token使用过滤选项
+ */
+export interface TokenFilterOptions {
+  /** 模型列表 */
+  models: string[];
+  /** 服务列表 */
+  services: string[];
+  /** 任务列表 */
+  tasks: string[];
 }

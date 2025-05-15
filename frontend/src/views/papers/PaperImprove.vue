@@ -7,7 +7,7 @@
           <p>根据您的反馈改进论文章节内容</p>
         </div>
       </template>
-      
+
       <div v-if="!currentContent" class="no-content">
         <el-empty description="未找到章节内容">
           <template #description>
@@ -16,7 +16,7 @@
           <el-button type="primary" @click="goToPaperGenerate">生成论文</el-button>
         </el-empty>
       </div>
-      
+
       <div v-else class="improve-form">
         <div class="current-content">
           <h3>当前章节: {{ currentContent.title }}</h3>
@@ -24,7 +24,7 @@
             <div v-html="formatContent(currentContent.content)"></div>
           </div>
         </div>
-        
+
         <el-form :model="formData" label-position="top" :rules="rules" ref="formRef">
           <el-form-item label="您的反馈" prop="feedback">
             <el-input
@@ -34,7 +34,7 @@
               placeholder="请描述您希望如何改进这个章节，例如：添加更多细节、调整论述逻辑、增加例子、修改表述方式等"
             />
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" :loading="loading" @click="submitForm">改进内容</el-button>
             <el-button @click="resetForm">重置</el-button>
@@ -43,7 +43,7 @@
         </el-form>
       </div>
     </el-card>
-    
+
     <el-card v-if="improvedContent" class="result-card">
       <template #header>
         <div class="card-header">
@@ -57,13 +57,13 @@
           </div>
         </div>
       </template>
-      
+
       <div class="improve-result">
         <h3>{{ improvedContent.section_id }}</h3>
         <div class="content-display">
           <div v-html="formatContent(improvedContent.improved_content)"></div>
         </div>
-        
+
         <div class="improvement-summary">
           <h4>改进说明</h4>
           <p>根据您的反馈，我们对内容进行了以下改进：</p>
@@ -74,7 +74,7 @@
             <li>添加了更多的引用和支持性证据</li>
           </ul>
         </div>
-        
+
         <div class="result-actions">
           <el-button type="primary" @click="saveImprovedContent">保存内容</el-button>
           <el-button @click="copyContent">复制内容</el-button>
@@ -82,7 +82,7 @@
         </div>
       </div>
     </el-card>
-    
+
     <el-dialog
       v-model="literatureDialogVisible"
       title="搜索学术文献"
@@ -98,7 +98,7 @@
             <el-button @click="performSearch">搜索</el-button>
           </template>
         </el-input>
-        
+
         <div v-if="searchResults.length > 0" class="search-results">
           <el-table
             :data="searchResults"
@@ -121,7 +121,7 @@
           <el-empty description="未找到相关文献" />
         </div>
       </div>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="literatureDialogVisible = false">取消</el-button>
@@ -140,6 +140,7 @@ import { ElMessage, FormInstance } from 'element-plus';
 import { useRouter, useRoute } from 'vue-router';
 import { improveSection } from '@/api/modules/papers';
 import { searchLiterature as searchLiteratureApi } from '@/api/modules/search';
+import { saveUserData, getUserData } from '@/utils/userStorage';
 import type { SectionImprovementRequest, SectionImprovementResponse, PaperSectionResponse } from '@/types/papers';
 import type { Paper } from '@/types/search';
 
@@ -182,24 +183,23 @@ const loading = ref(false);
 // 从路由参数和本地存储中获取章节内容
 onMounted(() => {
   const sectionId = route.params.sectionId as string;
-  
+
   if (sectionId) {
-    // 从本地存储中获取已保存的章节
-    const savedSections = JSON.parse(localStorage.getItem('savedSections') || '{}');
-    
+    // 从用户存储中获取已保存的章节
+    const savedSections = getUserData<Record<string, PaperSectionResponse>>('savedSections') || {};
+
     if (savedSections[sectionId]) {
       currentContent.value = savedSections[sectionId];
-      
+
       // 设置表单数据
       formData.section_id = sectionId;
       formData.current_content = currentContent.value.content;
-      
-      // 从本地存储中获取选中的主题
-      const selectedTopic = localStorage.getItem('selectedTopic');
+
+      // 从用户存储中获取选中的主题
+      const selectedTopic = getUserData<any>('selectedTopic');
       if (selectedTopic) {
         try {
-          const topic = JSON.parse(selectedTopic);
-          formData.topic = topic.title;
+          formData.topic = selectedTopic.title;
         } catch (error) {
           console.error('解析选中主题失败:', error);
         }
@@ -222,7 +222,7 @@ const goToPaperGenerate = () => {
 // 提交表单
 const submitForm = async () => {
   if (!formRef.value) return;
-  
+
   await formRef.value.validate(async (valid) => {
     if (valid) {
       loading.value = true;
@@ -260,7 +260,7 @@ const performSearch = async () => {
     ElMessage.warning('请输入搜索关键词');
     return;
   }
-  
+
   try {
     loading.value = true;
     const result = await searchLiteratureApi({
@@ -269,7 +269,7 @@ const performSearch = async () => {
     });
     searchResults.value = result.results;
     searchPerformed.value = true;
-    
+
     if (searchResults.value.length === 0) {
       ElMessage.info('未找到相关文献');
     }
@@ -284,7 +284,7 @@ const performSearch = async () => {
 // 格式化作者列表
 const formatAuthors = (authors: string[]) => {
   if (!authors || authors.length === 0) return '未知作者';
-  
+
   if (authors.length <= 3) {
     return authors.join(', ');
   } else {
@@ -303,10 +303,10 @@ const addSelectedLiterature = () => {
     ElMessage.warning('请选择要添加的文献');
     return;
   }
-  
+
   // 添加选中的文献
   formData.literature = selectedSearchResults.value;
-  
+
   ElMessage.success(`已添加 ${selectedSearchResults.value.length} 篇文献`);
   literatureDialogVisible.value = false;
 };
@@ -314,26 +314,26 @@ const addSelectedLiterature = () => {
 // 保存改进后的内容
 const saveImprovedContent = () => {
   if (!improvedContent.value) return;
-  
-  // 将改进后的内容保存到本地存储
-  const savedSections = JSON.parse(localStorage.getItem('savedSections') || '{}');
-  
+
+  // 将改进后的内容保存到用户存储
+  const savedSections = getUserData<Record<string, PaperSectionResponse>>('savedSections') || {};
+
   savedSections[improvedContent.value.section_id] = {
     section_id: improvedContent.value.section_id,
     title: currentContent.value?.title || improvedContent.value.section_id,
     content: improvedContent.value.improved_content,
     token_usage: improvedContent.value.token_usage
   };
-  
-  localStorage.setItem('savedSections', JSON.stringify(savedSections));
-  
+
+  saveUserData('savedSections', savedSections);
+
   ElMessage.success('内容已保存');
 };
 
 // 复制内容
 const copyContent = () => {
   if (!improvedContent.value) return;
-  
+
   navigator.clipboard.writeText(improvedContent.value.improved_content)
     .then(() => {
       ElMessage.success('内容已复制到剪贴板');
@@ -347,7 +347,7 @@ const copyContent = () => {
 // 继续改进
 const furtherImprove = () => {
   if (!improvedContent.value) return;
-  
+
   // 更新当前内容
   currentContent.value = {
     section_id: improvedContent.value.section_id,
@@ -355,19 +355,19 @@ const furtherImprove = () => {
     content: improvedContent.value.improved_content,
     token_usage: improvedContent.value.token_usage
   };
-  
+
   // 更新表单数据
   formData.current_content = improvedContent.value.improved_content;
-  
+
   // 清空反馈
   formData.feedback = '';
-  
+
   // 清空改进结果
   improvedContent.value = null;
-  
+
   // 滚动到顶部
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  
+
   ElMessage.info('请输入新的反馈以继续改进内容');
 };
 </script>
@@ -497,12 +497,12 @@ const furtherImprove = () => {
   .card-header {
     flex-direction: column;
   }
-  
+
   .token-usage {
     margin-left: 0;
     margin-top: 10px;
   }
-  
+
   .result-actions {
     flex-direction: column;
   }
