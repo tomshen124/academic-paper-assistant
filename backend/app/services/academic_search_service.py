@@ -117,23 +117,17 @@ class AcademicSearchService:
             logger.error(f"Google Scholar搜索失败: {str(e)}")
             return []
 
+    @staticmethod
     @cache_service.cached(prefix="arxiv_search", ttl=3600)  # 缓存一小时
-    async def search_arxiv(self, query: str, limit: int = 10, sort_by: str = "relevance", categories: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    async def search_arxiv(query: str, limit: int = 10, sort_by: str = "relevance", categories: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """搜索arXiv"""
         try:
             logger.info(f"搜索arXiv: {query}")
 
-            # 检查是否启用
-            if not self.enabled_sources.get("arxiv", True):
-                logger.info("arXiv搜索已禁用")
-                return []
-
+            # 不再需要检查是否启用，因为这是静态方法
             # 处理类别
             if categories:
                 category_filter = " AND (" + " OR ".join([f"cat:{cat}" for cat in categories]) + ")"
-                query = query + category_filter
-            elif self.arxiv_categories:
-                category_filter = " AND (" + " OR ".join([f"cat:{cat}" for cat in self.arxiv_categories]) + ")"
                 query = query + category_filter
 
             # 处理排序
@@ -142,77 +136,124 @@ class AcademicSearchService:
             else:
                 sort_criterion = arxiv.SortCriterion.Relevance
 
-            # 使用arxiv库搜索
-            search = arxiv.Search(
-                query=query,
-                max_results=limit,
-                sort_by=sort_criterion
-            )
+            # 使用更健壮的方式搜索arxiv
+            try:
+                # 直接使用同步方式搜索，避免使用线程池
+                logger.info(f"开始arXiv搜索: {query}, 限制: {limit}")
 
-            # 使用线程池执行同步操作
-            def get_results():
-                try:
-                    # 添加随机延迟，避免多个请求同时发送
-                    time.sleep(random.uniform(0.5, 2.0))
-                    return list(search.results())
-                except Exception as e:
-                    logger.error(f"arXiv获取结果失败: {str(e)}")
-                    return []
+                # 使用arxiv库搜索
+                search = arxiv.Search(
+                    query=query,
+                    max_results=limit,
+                    sort_by=sort_criterion
+                )
 
-            # 使用run_in_executor替代asyncio.to_thread
-            max_retries = 3
-            base_delay = 2
+                # 使用更简单的方式获取结果
+                results = []
+                for paper in search.results():
+                    try:
+                        # 提取需要的字段
+                        paper_data = {
+                            "title": paper.title,
+                            "authors": [author.name for author in paper.authors],
+                            "year": paper.published.year if hasattr(paper, "published") else "",
+                            "abstract": paper.summary,
+                            "url": paper.pdf_url,
+                            "categories": paper.categories,
+                            "source": "arxiv"
+                        }
+                        results.append(paper_data)
 
-            for retry in range(max_retries):
-                try:
-                    if retry > 0:
-                        # 重试前等待
-                        wait_time = base_delay * (1.5 ** retry) + random.uniform(0, 1)
-                        logger.info(f"arXiv请求前等待 {wait_time:.2f} 秒")
-                        await asyncio.sleep(wait_time)
+                        # 如果已经获取了足够的结果，就停止
+                        if len(results) >= limit:
+                            break
+                    except Exception as e:
+                        logger.error(f"处理arXiv结果时出错: {str(e)}")
+                        continue
 
-                    loop = asyncio.get_event_loop()
-                    search_results = await loop.run_in_executor(None, get_results)
+                logger.info(f"arXiv搜索完成，找到 {len(results)} 条结果")
+                return results
 
-                    if search_results:  # 如果有结果，跳出重试循环
-                        break
-                    elif retry < max_retries - 1:  # 如果没有结果但还有重试机会
-                        logger.warning(f"arXiv搜索返回空结果，将重试 ({retry+1}/{max_retries})")
-                    else:
-                        logger.warning(f"arXiv搜索所有重试均返回空结果")
-                except Exception as e:
-                    logger.error(f"arXiv搜索异常: {str(e)}")
-                    if retry < max_retries - 1:
-                        wait_time = base_delay * (1.5 ** retry) + random.uniform(0, 1)
-                        logger.warning(f"等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
-                        await asyncio.sleep(wait_time)
-                    else:
-                        logger.error(f"arXiv搜索失败，所有重试均失败")
+            except Exception as e:
+                logger.error(f"直接搜索arXiv失败: {str(e)}")
+
+                # 如果直接搜索失败，尝试使用备用方法
+                logger.info("尝试使用备用方法搜索arXiv")
+
+                # 使用线程池执行同步操作
+                def get_results():
+                    try:
+                        # 添加随机延迟，避免多个请求同时发送
+                        time.sleep(random.uniform(0.5, 2.0))
+
+                        # 重新创建搜索对象
+                        backup_search = arxiv.Search(
+                            query=query,
+                            max_results=limit,
+                            sort_by=sort_criterion
+                        )
+
+                        # 获取结果
+                        return list(backup_search.results())
+                    except Exception as e:
+                        logger.error(f"arXiv备用方法获取结果失败: {str(e)}")
                         return []
 
-            results = []
-            for result in search_results:
-                try:
-                    # 提取需要的字段
-                    paper = {
-                        "title": result.title,
-                        "authors": [author.name for author in result.authors],
-                        "year": result.published.year if hasattr(result, "published") else "",
-                        "abstract": result.summary,
-                        "url": result.pdf_url,
-                        "categories": result.categories,
-                        "source": "arxiv"
-                    }
-                    results.append(paper)
-                except Exception as e:
-                    logger.error(f"处理arXiv结果时出错: {str(e)}")
-                    continue
+                # 使用run_in_executor替代asyncio.to_thread
+                max_retries = 3
+                base_delay = 2
 
-            logger.info(f"arXiv搜索完成，找到 {len(results)} 条结果")
-            return results
+                for retry in range(max_retries):
+                    try:
+                        if retry > 0:
+                            # 重试前等待
+                            wait_time = base_delay * (1.5 ** retry) + random.uniform(0, 1)
+                            logger.info(f"arXiv备用请求前等待 {wait_time:.2f} 秒")
+                            await asyncio.sleep(wait_time)
+
+                        loop = asyncio.get_event_loop()
+                        search_results = await loop.run_in_executor(None, get_results)
+
+                        if search_results:  # 如果有结果，跳出重试循环
+                            break
+                        elif retry < max_retries - 1:  # 如果没有结果但还有重试机会
+                            logger.warning(f"arXiv备用搜索返回空结果，将重试 ({retry+1}/{max_retries})")
+                        else:
+                            logger.warning(f"arXiv备用搜索所有重试均返回空结果")
+                    except Exception as e:
+                        logger.error(f"arXiv备用搜索异常: {str(e)}")
+                        if retry < max_retries - 1:
+                            wait_time = base_delay * (1.5 ** retry) + random.uniform(0, 1)
+                            logger.warning(f"等待 {wait_time:.2f} 秒后重试 ({retry+1}/{max_retries})")
+                            await asyncio.sleep(wait_time)
+                        else:
+                            logger.error(f"arXiv备用搜索失败，所有重试均失败")
+                            return []
+
+                results = []
+                for result in search_results:
+                    try:
+                        # 提取需要的字段
+                        paper = {
+                            "title": result.title,
+                            "authors": [author.name for author in result.authors],
+                            "year": result.published.year if hasattr(result, "published") else "",
+                            "abstract": result.summary,
+                            "url": result.pdf_url,
+                            "categories": result.categories,
+                            "source": "arxiv"
+                        }
+                        results.append(paper)
+                    except Exception as e:
+                        logger.error(f"处理arXiv备用结果时出错: {str(e)}")
+                        continue
+
+                logger.info(f"arXiv备用搜索完成，找到 {len(results)} 条结果")
+                return results
 
         except Exception as e:
             logger.error(f"arXiv搜索失败: {str(e)}")
+            # 返回空列表而不是抛出异常
             return []
 
     @cache_service.cached(prefix="semantic_scholar_search", ttl=3600)  # 缓存一小时
@@ -377,57 +418,168 @@ class AcademicSearchService:
             else:
                 search_sources = self.enabled_sources
 
+            # 优先使用arXiv（不需要API密钥）
+            if search_sources.get("arxiv", False):
+                logger.info("优先使用arXiv搜索")
+                try:
+                    # 使用静态方法
+                    arxiv_results = await AcademicSearchService.search_arxiv(query, limit, sort_by, categories)
+
+                    # 检查结果是否为列表
+                    if not isinstance(arxiv_results, list):
+                        logger.warning(f"arXiv搜索返回了非列表结果: {type(arxiv_results)}")
+                        arxiv_results = []
+
+                    # 确保结果是可序列化的
+                    serializable_results = []
+                    for paper in arxiv_results:
+                        if not isinstance(paper, dict):
+                            logger.warning(f"跳过非字典类型的论文: {type(paper)}")
+                            continue
+
+                        try:
+                            serializable_paper = {
+                                "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                                "authors": paper.get("authors", []),
+                                "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                                "abstract": str(paper.get("abstract", ""))[:300] if paper.get("abstract") is not None else "",  # 限制摘要长度
+                                "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                                "source": "arxiv"
+                            }
+                            serializable_results.append(serializable_paper)
+                        except Exception as e:
+                            logger.error(f"处理arXiv论文数据时出错: {str(e)}")
+                            continue
+
+                    if serializable_results:
+                        logger.info(f"arXiv搜索成功，找到 {len(serializable_results)} 条结果")
+                        return {
+                            "results": serializable_results[:limit],
+                            "total": len(serializable_results),
+                            "query": query,
+                            "sources_stats": {"arxiv": len(serializable_results)}
+                        }
+                    else:
+                        logger.warning("arXiv搜索未找到结果，尝试其他来源")
+                except Exception as e:
+                    logger.error(f"arXiv搜索失败: {str(e)}")
+                    # 如果arXiv失败，尝试其他来源
+
             # 并行搜索多个来源
             tasks = []
+            source_names = []
+
+            # 添加Semantic Scholar搜索任务
             if search_sources.get("semantic_scholar", False):
                 tasks.append(self.search_semantic_scholar(query, limit, sort_by, years, fields))
-            if search_sources.get("arxiv", False):
-                tasks.append(self.search_arxiv(query, limit, sort_by, categories))
+                source_names.append("semantic_scholar")
+
+            # 如果前面的arXiv搜索失败，再次尝试
+            if search_sources.get("arxiv", False) and not any(t for t in tasks):
+                tasks.append(AcademicSearchService.search_arxiv(query, limit, sort_by, categories))
+                source_names.append("arxiv")
+
+            # 添加Google Scholar搜索任务
             if search_sources.get("google_scholar", False):
                 tasks.append(self.search_google_scholar(query, limit, sort_by, years))
+                source_names.append("google_scholar")
 
+            # 如果没有任何搜索任务，返回空结果
+            if not tasks:
+                logger.warning("没有启用的搜索源，返回空结果")
+                return {
+                    "results": [],
+                    "total": 0,
+                    "query": query,
+                    "sources_stats": {}
+                }
+
+            # 并行执行所有搜索任务
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # 合并结果
             all_papers = []
             sources_stats = {}
 
+            # 处理每个搜索源的结果
             for i, result in enumerate(results):
+                source_name = source_names[i] if i < len(source_names) else "unknown"
+
                 if isinstance(result, list):
-                    source_name = list(search_sources.keys())[i] if i < len(search_sources) else "unknown"
+                    # 正常结果
                     sources_stats[source_name] = len(result)
                     all_papers.extend(result)
+                elif isinstance(result, Exception):
+                    # 异常结果
+                    logger.error(f"搜索源 {source_name} 失败: {str(result)}")
+                    sources_stats[source_name] = 0
+                elif result is None:
+                    # 空结果
+                    logger.warning(f"搜索源 {source_name} 返回了None")
+                    sources_stats[source_name] = 0
                 else:
-                    logger.error(f"搜索失败: {str(result)}")
-                    source_name = list(search_sources.keys())[i] if i < len(search_sources) else "unknown"
+                    # 其他类型的结果
+                    logger.error(f"搜索源 {source_name} 返回了非列表结果: {type(result)}")
                     sources_stats[source_name] = 0
 
             # 去重（基于标题）
             unique_papers = {}
             for paper in all_papers:
-                title = paper.get("title", "").lower()
-                if title and title not in unique_papers:
-                    unique_papers[title] = paper
+                # 跳过非字典类型的论文
+                if not isinstance(paper, dict):
+                    logger.warning(f"跳过非字典类型的论文: {type(paper)}")
+                    continue
+
+                try:
+                    title = str(paper.get("title", "")).lower() if paper.get("title") is not None else ""
+                    if title and title not in unique_papers:
+                        # 确保每个论文对象都是可序列化的
+                        serializable_paper = {
+                            "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                            "authors": paper.get("authors", []),
+                            "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                            "abstract": str(paper.get("abstract", ""))[:300] if paper.get("abstract") is not None else "",  # 限制摘要长度
+                            "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                            "source": str(paper.get("source", "unknown")) if paper.get("source") is not None else "unknown"
+                        }
+
+                        # 可选字段，如果存在则添加
+                        if "citations" in paper and paper["citations"] is not None:
+                            serializable_paper["citations"] = int(paper["citations"]) if isinstance(paper["citations"], (int, float)) else 0
+                        if "venue" in paper and paper["venue"] is not None:
+                            serializable_paper["venue"] = str(paper["venue"])
+                        if "categories" in paper and paper["categories"] is not None:
+                            serializable_paper["categories"] = paper["categories"]
+
+                        unique_papers[title] = serializable_paper
+                except Exception as e:
+                    logger.error(f"处理论文数据时出错: {str(e)}")
+                    continue
 
             # 排序
-            if sort_by == "citations":
-                sorted_papers = sorted(
-                    unique_papers.values(),
-                    key=lambda x: x.get("citations", 0),
-                    reverse=True
-                )
-            elif sort_by == "date":
-                sorted_papers = sorted(
-                    unique_papers.values(),
-                    key=lambda x: int(x.get("year", 0)) if x.get("year") and str(x.get("year", "")).isdigit() else 0,
-                    reverse=True
-                )
-            else:
-                # 默认按相关性排序（保持原顺序）
+            try:
+                if sort_by == "citations":
+                    sorted_papers = sorted(
+                        unique_papers.values(),
+                        key=lambda x: int(x.get("citations", 0)) if x.get("citations") is not None else 0,
+                        reverse=True
+                    )
+                elif sort_by == "date":
+                    sorted_papers = sorted(
+                        unique_papers.values(),
+                        key=lambda x: int(x.get("year", 0)) if x.get("year") and str(x.get("year", "")).isdigit() else 0,
+                        reverse=True
+                    )
+                else:
+                    # 默认按相关性排序（保持原顺序）
+                    sorted_papers = list(unique_papers.values())
+            except Exception as e:
+                logger.error(f"排序论文时出错: {str(e)}")
                 sorted_papers = list(unique_papers.values())
 
             logger.info(f"综合搜索完成，找到 {len(sorted_papers)} 条去重结果")
 
+            # 返回结果
             return {
                 "results": sorted_papers[:limit],
                 "total": len(sorted_papers),
@@ -437,6 +589,7 @@ class AcademicSearchService:
 
         except Exception as e:
             logger.error(f"综合搜索失败: {str(e)}")
+            # 返回空结果而不是抛出异常
             return {
                 "results": [],
                 "total": 0,
@@ -451,76 +604,131 @@ class AcademicSearchService:
             logger.info(f"获取论文详情: {paper_id} 来源: {source}")
 
             if source == "semantic_scholar":
-                # 构建API请求
-                url = f"{self.semantic_scholar_api_url}/paper/{paper_id}"
-                params = {
-                    "fields": self.semantic_scholar_fields
-                }
+                try:
+                    # 构建API请求
+                    url = f"{self.semantic_scholar_api_url}/paper/{paper_id}"
+                    params = {
+                        "fields": self.semantic_scholar_fields
+                    }
 
-                # 添加API密钥
-                headers = {}
-                if self.semantic_scholar_api_key and self.semantic_scholar_api_key != "your_semantic_scholar_api_key":
-                    headers["x-api-key"] = self.semantic_scholar_api_key
-                    logger.info("Semantic Scholar API使用API密钥")
-                else:
-                    logger.warning("Semantic Scholar API未配置API密钥或使用示例密钥，将使用无密钥访问")
+                    # 添加API密钥
+                    headers = {}
+                    if self.semantic_scholar_api_key and self.semantic_scholar_api_key != "your_semantic_scholar_api_key":
+                        headers["x-api-key"] = self.semantic_scholar_api_key
+                        logger.info("Semantic Scholar API使用API密钥")
+                    else:
+                        logger.warning("Semantic Scholar API未配置API密钥或使用示例密钥，将使用无密钥访问")
 
-                # 发送请求，带重试和延迟
-                max_retries = 3
-                retry_delay = 2  # 初始延迟秒数
+                    # 发送请求，带重试和延迟
+                    max_retries = 3
+                    retry_delay = 2  # 初始延迟秒数
 
-                for retry in range(max_retries):
-                    try:
-                        response = await self.client.get(url, params=params, headers=headers)
-                        response.raise_for_status()
-                        paper = response.json()
-                        break
-                    except Exception as e:
-                        if retry < max_retries - 1:
-                            # 如果是429错误，增加更长的延迟
-                            if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 429:
-                                wait_time = retry_delay * (2 ** retry)  # 指数退避
-                                logger.warning(f"Semantic Scholar请求限制，等待{wait_time}秒后重试")
-                                await asyncio.sleep(wait_time)
+                    paper = None
+                    for retry in range(max_retries):
+                        try:
+                            response = await self.client.get(url, params=params, headers=headers)
+                            response.raise_for_status()
+                            paper = response.json()
+                            break
+                        except Exception as e:
+                            if retry < max_retries - 1:
+                                # 如果是429错误，增加更长的延迟
+                                if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 429:
+                                    wait_time = retry_delay * (2 ** retry)  # 指数退避
+                                    logger.warning(f"Semantic Scholar请求限制，等待{wait_time}秒后重试")
+                                    await asyncio.sleep(wait_time)
+                                else:
+                                    await asyncio.sleep(retry_delay)
                             else:
-                                await asyncio.sleep(retry_delay)
-                        else:
-                            # 最后一次重试也失败，抛出异常
-                            raise
+                                # 最后一次重试也失败，记录错误并返回空结果
+                                logger.error(f"Semantic Scholar获取论文详情失败: {str(e)}")
+                                return {}
 
-                return {
-                    "title": paper.get("title", ""),
-                    "authors": [author.get("name", "") for author in paper.get("authors", [])],
-                    "year": paper.get("year", ""),
-                    "abstract": paper.get("abstract", ""),
-                    "url": paper.get("url", ""),
-                    "venue": paper.get("venue", ""),
-                    "citations": paper.get("citationCount", 0),
-                    "references": paper.get("references", []),
-                    "source": "semantic_scholar"
-                }
+                    # 检查paper是否为None
+                    if paper is None:
+                        logger.error("Semantic Scholar返回了空结果")
+                        return {}
+
+                    # 确保返回的数据是可序列化的
+                    return {
+                        "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                        "authors": [str(author.get("name", "")) for author in paper.get("authors", [])],
+                        "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                        "abstract": str(paper.get("abstract", "")) if paper.get("abstract") is not None else "",
+                        "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                        "venue": str(paper.get("venue", "")) if paper.get("venue") is not None else "",
+                        "citations": int(paper.get("citationCount", 0)) if paper.get("citationCount") is not None else 0,
+                        "references": paper.get("references", []),
+                        "source": "semantic_scholar"
+                    }
+                except Exception as e:
+                    logger.error(f"处理Semantic Scholar论文详情时出错: {str(e)}")
+                    return {}
 
             elif source == "arxiv":
-                # 使用arxiv库获取详情
-                search = arxiv.Search(id_list=[paper_id])
+                try:
+                    # 使用arxiv库获取详情
+                    search = arxiv.Search(id_list=[paper_id])
 
-                # 使用线程池执行同步操作
-                def get_result():
-                    return list(search.results())[0]
+                    # 直接使用同步方式获取结果
+                    try:
+                        # 直接获取结果
+                        results = list(search.results())
+                        if not results:
+                            logger.warning(f"arXiv未找到论文: {paper_id}")
+                            return {}
 
-                # 使用run_in_executor执行同步操作
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, get_result)
+                        result = results[0]
 
-                return {
-                    "title": result.title,
-                    "authors": [author.name for author in result.authors],
-                    "year": result.published.year if hasattr(result, "published") else "",
-                    "abstract": result.summary,
-                    "url": result.pdf_url,
-                    "categories": result.categories,
-                    "source": "arxiv"
-                }
+                        # 确保返回的数据是可序列化的
+                        return {
+                            "title": str(result.title) if hasattr(result, "title") else "",
+                            "authors": [str(author.name) for author in result.authors] if hasattr(result, "authors") else [],
+                            "year": str(result.published.year) if hasattr(result, "published") else "",
+                            "abstract": str(result.summary) if hasattr(result, "summary") else "",
+                            "url": str(result.pdf_url) if hasattr(result, "pdf_url") else "",
+                            "categories": result.categories if hasattr(result, "categories") else [],
+                            "source": "arxiv"
+                        }
+                    except Exception as e:
+                        logger.error(f"直接获取arXiv论文详情失败: {str(e)}")
+
+                        # 使用备用方法
+                        logger.info("尝试使用备用方法获取arXiv论文详情")
+
+                        # 使用线程池执行同步操作
+                        def get_result():
+                            try:
+                                backup_search = arxiv.Search(id_list=[paper_id])
+                                results = list(backup_search.results())
+                                if results:
+                                    return results[0]
+                                return None
+                            except Exception as e:
+                                logger.error(f"arXiv备用方法获取结果失败: {str(e)}")
+                                return None
+
+                        # 使用run_in_executor执行同步操作
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(None, get_result)
+
+                        if result is None:
+                            logger.error(f"arXiv备用方法未找到论文: {paper_id}")
+                            return {}
+
+                        # 确保返回的数据是可序列化的
+                        return {
+                            "title": str(result.title) if hasattr(result, "title") else "",
+                            "authors": [str(author.name) for author in result.authors] if hasattr(result, "authors") else [],
+                            "year": str(result.published.year) if hasattr(result, "published") else "",
+                            "abstract": str(result.summary) if hasattr(result, "summary") else "",
+                            "url": str(result.pdf_url) if hasattr(result, "pdf_url") else "",
+                            "categories": result.categories if hasattr(result, "categories") else [],
+                            "source": "arxiv"
+                        }
+                except Exception as e:
+                    logger.error(f"获取arXiv论文详情失败: {str(e)}")
+                    return {}
 
             else:
                 logger.error(f"不支持的来源: {source}")
@@ -543,51 +751,94 @@ class AcademicSearchService:
 
             # 构建查询
             query = f"survey {field} recent advances"
+            logger.info(f"研究趋势查询: {query}")
 
             # 搜索最近的综述论文
             try:
-                search_result = await self.search_academic_papers(
-                    query=query,
-                    limit=10,
-                    sort_by="date",
-                    years="last_5"
-                )
+                # 使用更健壮的查询方式
+                try:
+                    # 尝试使用主要查询
+                    search_result = await self.search_academic_papers(
+                        query=query,
+                        limit=15,  # 获取更多结果以增加筛选后的有效数据
+                        sort_by="date",
+                        years="last_5"
+                    )
+                except Exception as search_error:
+                    # 记录原始错误
+                    logger.error(f"主要研究趋势查询失败: {str(search_error)}")
+
+                    # 降级：使用更简单的查询
+                    try:
+                        logger.info(f"尝试使用备用查询: {field}")
+                        search_result = await self.search_academic_papers(
+                            query=field,
+                            limit=15,
+                            sort_by="relevance"
+                        )
+                    except Exception as backup_error:
+                        logger.error(f"备用研究趋势查询也失败: {str(backup_error)}")
+                        # 返回空结果而不是抛出异常
+                        return []
 
                 # 验证搜索结果格式
                 if not isinstance(search_result, dict) or "results" not in search_result:
                     logger.warning(f"搜索结果格式无效: {type(search_result)}, 返回空列表")
                     return []
 
+                # 检查结果是否为空
+                if not search_result["results"]:
+                    logger.warning(f"搜索结果为空，返回空列表")
+                    return []
+
                 # 按引用次数排序
-                papers = sorted(
-                    search_result["results"],
-                    key=lambda x: x.get("citations", 0),
-                    reverse=True
-                )
+                try:
+                    papers = sorted(
+                        search_result["results"],
+                        key=lambda x: int(x.get("citations", 0)) if x.get("citations") is not None else 0,
+                        reverse=True
+                    )
+                except Exception as sort_error:
+                    logger.error(f"排序论文时出错: {str(sort_error)}")
+                    # 如果排序失败，直接使用原始结果
+                    papers = search_result["results"]
             except Exception as e:
                 logger.error(f"搜索学术论文失败: {str(e)}")
                 return []
 
-            # 提取趋势信息
+            # 提取趋势信息，确保所有字段都是可序列化的
             trends = []
             for paper in papers[:10]:
                 if not isinstance(paper, dict):
+                    logger.warning(f"跳过非字典类型的论文: {type(paper)}")
                     continue
 
-                trend = {
-                    "title": paper.get("title", ""),
-                    "abstract": paper.get("abstract", ""),
-                    "year": paper.get("year", ""),
-                    "url": paper.get("url", ""),
-                    "citations": paper.get("citations", 0)
-                }
-                trends.append(trend)
+                try:
+                    # 确保所有字段都是基本类型
+                    trend = {
+                        "title": str(paper.get("title", "")) if paper.get("title") is not None else "",
+                        "abstract": str(paper.get("abstract", ""))[:300] if paper.get("abstract") is not None else "",  # 限制摘要长度
+                        "year": str(paper.get("year", "")) if paper.get("year") is not None else "",
+                        "url": str(paper.get("url", "")) if paper.get("url") is not None else "",
+                        "citations": int(paper.get("citations", 0)) if paper.get("citations") is not None and str(paper.get("citations", "")).isdigit() else 0
+                    }
+                    trends.append(trend)
+                except Exception as e:
+                    logger.error(f"处理论文数据时出错: {str(e)}, 跳过此论文")
+                    continue
 
             logger.info(f"获取研究趋势完成，找到 {len(trends)} 条趋势")
+
+            # 确保返回的是可序列化的列表
+            if not isinstance(trends, list):
+                logger.warning(f"趋势不是列表类型: {type(trends)}, 返回空列表")
+                return []
+
             return trends
 
         except Exception as e:
             logger.error(f"获取研究趋势失败: {str(e)}")
+            # 返回空列表而不是抛出异常
             return []
 
 # 创建全局学术搜索服务实例
